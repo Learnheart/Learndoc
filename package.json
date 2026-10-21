@@ -5,6 +5,14 @@
   "type": "module",
   "description": "Interactive, editable learning documents rendered from typed lesson JSON.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Learnheart/Learndoc.git"
+  },
+  "homepage": "https://github.com/Learnheart/Learndoc#readme",
+  "bugs": {
+    "url": "https://github.com/Learnheart/Learndoc/issues"
+  },
   "engines": {
     "node": ">=22"
   },
