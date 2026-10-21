@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "02-next",
+  "title": "Next",
+  "blocks": [
+    { "id": "b-next1", "type": "prose", "html": "<p>Recall <a href=\"lesson:01-intro#basics\">the basics</a> about $\\mathbf{x}$.</p>", "sources": ["notes#basics"] }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "language": "en",
+  "audience": "Test readers",
+  "references": { "notes": { "type": "markdown", "file": "references/notes.md", "title": "Notes" } },
+  "features": { "math": true },
+  "edit": { "maxRelated": 2 }
+}

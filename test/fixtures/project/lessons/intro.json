@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "id": "intro",
+  "title": "Intro to $\\mathbb{R}^n$",
+  "lede": "Vectors, norms & friends.",
+  "meta": {
+    "duration": "10 min",
+    "level": "beginner"
+  },
+  "notation": {
+    "\\mathbf{x}": "a vector"
+  },
+  "blocks": [
+    {
+      "id": "b-1000",
+      "type": "heading",
+      "level": 2,
+      "anchor": "vectors",
+      "text": "1. Vectors in $\\mathbb{R}^n$"
+    },
+    {
+      "id": "b-1001",
+      "type": "prose",
+      "html": "<p>A <span class=\"term\">vector</span> $\\mathbf{x}$ with $x_1 \\lt x_2$ and $a &lt; b$ costs \\$5. See <a href=\"#norms\">norms</a>, <a href=\"lesson:second#topic\">the next lesson</a> and <a href=\"https://example.com/\">a site</a>.</p><ul class=\"takeaways\"><li>One</li><li>Two: $$\\sum_i x_i$$</li></ul>",
+      "sources": [
+        "notes#vectors",
+        "notes#inner-product|§1.2"
+      ]
+    },
+    {
+      "id": "b-1002",
+      "type": "box",
+      "variant": "warn",
+      "title": "Pitfall — $\\|\\mathbf{x}\\|$ is not $\\mathbf{x}$",
+      "html": "<p>Length is a number.</p>",
+      "sources": [
+        "notes#norms"
+      ]
+    },
+    {
+      "id": "b-1003",
+      "type": "box",
+      "variant": "aside",
+      "title": "Aside",
+      "html": "<p><code>$HOME</code> is not math.</p>",
+      "sources": [
+        "notes#vectors"
+      ]
+    },
+    {
+      "id": "b-1004",
+      "type": "heading",
+      "level": 3,
+      "anchor": "norms",
+      "text": "Norms"
+    },
+    {
+      "id": "b-1005",
+      "type": "math",
+      "latex": "\\|\\mathbf{x}\\|_2 = \\sqrt{\\sum_i x_i^2}",
+      "sources": [
+        "notes#norms"
+      ]
+    },
+    {
+      "id": "b-1006",
+      "type": "code",
+      "language": "python",
+      "code": "import numpy as np\nprint(np.linalg.norm([3, 4]))  # $5\n",
+      "caption": "Norm of $[3, 4]$"
+    },
+    {
+      "id": "b-1007",
+      "type": "figure",
+      "svg": "<svg viewBox=\"0 0 100 40\" width=\"100\" height=\"40\" role=\"img\" aria-label=\"An arrow\"><defs><marker id=\"m1\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\"><path class=\"c1\" d=\"M0,0 L10,5 L0,10 z\"/></marker></defs><line class=\"c1\" x1=\"5\" y1=\"20\" x2=\"90\" y2=\"20\" stroke-width=\"2\" marker-end=\"url(#m1)\"/></svg>",
+      "alt": "An arrow",
+      "caption": "The vector $\\mathbf{x}$"
+    },
+    {
+      "id": "b-1008",
+      "type": "widget",
+      "widget": "counter",
+      "props": {
+        "start": 3,
+        "label": "Taps"
+      }
+    },
+    {
+      "id": "b-1009",
+      "type": "quiz",
+      "question": "What is $\\|[3,4]\\|_2$?",
+      "answer": "<p>$5$, because $3^2 + 4^2 = 25$.</p>",
+      "sources": [
+        "notes#norms"
+      ]
+    }
+  ]
+}

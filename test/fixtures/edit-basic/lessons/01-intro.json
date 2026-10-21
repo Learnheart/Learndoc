@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "01-intro",
+  "title": "Intro",
+  "notation": { "\\mathbf{x}": "a vector" },
+  "blocks": [
+    { "id": "b-head1", "type": "heading", "level": 2, "anchor": "basics", "text": "1. Basics" },
+    { "id": "b-prose1", "type": "prose", "html": "<p>A vector $\\mathbf{x}$ has a <strong>length</strong> and a direction.</p>", "sources": ["notes#basics"] },
+    { "id": "b-box1", "type": "box", "variant": "note", "title": "Remember", "html": "<p>The length of $\\mathbf{x}$ is never negative.</p>", "sources": ["notes#basics"] },
+    { "id": "b-plot1", "type": "widget", "widget": "vector-plane", "props": { "vectors": [{ "id": "a", "x": 3, "y": 1 }] } },
+    { "id": "b-quiz1", "type": "quiz", "question": "Can a length be negative?", "answer": "<p>No.</p>", "sources": ["notes#basics"] }
+  ]
+}

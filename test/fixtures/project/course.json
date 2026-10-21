@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "title": "Fixture course",
+  "description": "A tiny course used by the unit tests.",
+  "modules": [
+    {
+      "id": "basics",
+      "title": "Basics",
+      "lessons": [
+        { "id": "intro", "title": "Intro", "summary": "Every block type once.", "prereq": [], "sources": ["notes#vectors"], "status": "done" },
+        { "id": "second", "title": "Second", "prereq": ["intro"], "status": "done" },
+        { "id": "later", "title": "Later", "status": "planned" }
+      ]
+    }
+  ]
+}

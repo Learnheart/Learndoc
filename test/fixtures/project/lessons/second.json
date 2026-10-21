@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "second",
+  "title": "Second",
+  "blocks": [
+    {
+      "id": "b-2000",
+      "type": "heading",
+      "level": 2,
+      "anchor": "topic",
+      "text": "Topic"
+    },
+    {
+      "id": "b-2001",
+      "type": "prose",
+      "html": "<p>Back to <a href=\"lesson:intro#norms\">norms</a>.</p>",
+      "sources": [
+        "notes#norms"
+      ]
+    }
+  ]
+}

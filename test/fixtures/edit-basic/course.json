@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "title": "Edit Fixture",
+  "modules": [
+    { "id": "m1", "title": "Module One",
+      "lessons": [
+        { "id": "01-intro", "title": "Intro", "status": "done", "sources": ["notes#basics"] },
+        { "id": "02-next", "title": "Next", "status": "done", "prereq": ["01-intro"] }
+      ] }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "language": "en",
+  "audience": "Test readers",
+  "references": {
+    "notes": { "type": "markdown", "file": "references/notes.md", "title": "Fixture notes" }
+  },
+  "features": { "math": true },
+  "boxTypes": {
+    "aside": { "label": "Aside", "color": "c3" },
+    "note": { "label": "Remember" }
+  }
+}
