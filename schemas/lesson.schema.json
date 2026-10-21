@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learndoc.local/schemas/lesson.schema.json",
+  "title": "lessons/<id>.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "blocks"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "$ref": "#/$defs/slug"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lede": {
+      "type": "string"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "duration": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        }
+      }
+    },
+    "notation": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "blockId": {
+      "type": "string",
+      "pattern": "^b-[a-z0-9]{4,12}$"
+    },
+    "sourceRef": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*#(p[0-9]+(-[0-9]+)?|[a-z0-9][a-z0-9-]*)(\\|.{1,80})?$"
+    },
+    "block": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "heading",
+            "prose",
+            "box",
+            "math",
+            "code",
+            "figure",
+            "widget",
+            "quiz"
+          ]
+        }
+      },
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/heading"
+        },
+        {
+          "$ref": "#/$defs/prose"
+        },
+        {
+          "$ref": "#/$defs/box"
+        },
+        {
+          "$ref": "#/$defs/math"
+        },
+        {
+          "$ref": "#/$defs/code"
+        },
+        {
+          "$ref": "#/$defs/figure"
+        },
+        {
+          "$ref": "#/$defs/widget"
+        },
+        {
+          "$ref": "#/$defs/quiz"
+        }
+      ]
+    },
+    "heading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "level",
+        "anchor",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "heading"
+        },
+        "level": {
+          "enum": [
+            2,
+            3
+          ]
+        },
+        "anchor": {
+          "$ref": "#/$defs/slug"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "prose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "html",
+        "sources"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "prose"
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        }
+      }
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "variant",
+        "title",
+        "html",
+        "sources"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "box"
+        },
+        "variant": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        }
+      }
+    },
+    "math": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "latex",
+        "sources"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "math"
+        },
+        "latex": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "language",
+        "code"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "code"
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9+#._-]{0,31}$"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "caption": {
+          "type": "string"
+        }
+      }
+    },
+    "figure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "alt",
+        "caption"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "figure"
+        },
+        "svg": {
+          "type": "string",
+          "pattern": "^\\s*<svg[\\s>]"
+        },
+        "src": {
+          "type": "string",
+          "pattern": "^assets/[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$"
+        },
+        "alt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "caption": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "widget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "widget",
+        "props"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "widget"
+        },
+        "widget": {
+          "$ref": "#/$defs/slug"
+        },
+        "props": {
+          "type": "object"
+        }
+      }
+    },
+    "quiz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "question",
+        "answer",
+        "sources"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/blockId"
+        },
+        "type": {
+          "const": "quiz"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        }
+      }
+    }
+  }
+}

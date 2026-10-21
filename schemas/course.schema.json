@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learndoc.local/schemas/course.schema.json",
+  "title": "course.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "title",
+    "modules"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "lessons"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/slug"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lessons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/lesson"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "sourceRef": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*#(p[0-9]+(-[0-9]+)?|[a-z0-9][a-z0-9-]*)(\\|.{1,80})?$"
+    },
+    "lesson": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/slug"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string"
+        },
+        "prereq": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "$ref": "#/$defs/slug"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "done"
+          ]
+        }
+      }
+    }
+  }
+}
