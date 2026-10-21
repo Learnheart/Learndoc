@@ -1,8 +1,7 @@
 # Learndoc internal contracts
 
-This file fixes the interfaces between modules so they can be built in parallel.
-Design rationale lives in `../../learndoc-design.html` (Vietnamese; outside this repo). When this file and
-the design disagree, this file wins for implementation details.
+This file fixes the interfaces between modules so they can be built and changed independently.
+It is the binding reference for implementation details.
 
 Runtime rule: **no `npm install` for users.** Runtime code imports only `node:` built-ins,
 files inside this repo, and vendored libraries under `runtime/vendor/`. `devDependencies`
@@ -57,7 +56,6 @@ learndoc-skill/                 (symlinked to ~/.claude/skills/learndoc)
 ├── schemas/                    config, course, lesson, changeset, answer (*.schema.json), html-whitelist.json
 ├── references/                 authoring-contract.md, course-planning.md, edit-contract.md,
 │                               widget-catalog.md, delivery-contract.md
-├── examples/                   fixture projects (sample-derived + non-math)
 ├── scripts/                    generate-validators.mjs, vendor-katex.mjs, vendor-pdfjs.mjs
 └── test/                       unit/ (node:test), fixtures/, fake-claude/ (LEARNDOC_CLAUDE_BIN stub),
                                 e2e/ (CDP-driven UI journey)
@@ -128,7 +126,7 @@ Cross-lesson links inside html: `<a href="lesson:<id>">` or `<a href="lesson:<id
 In-lesson: `<a href="#<anchor>">`. External: `https://…` only.
 
 ### html-whitelist.json
-Tags → allowed attributes. v1 set (from the sample):
+Tags → allowed attributes (v1 set):
 `p[class], strong, em, b, i, code, sub, sup, br, span[class], a[href], ul[class], ol[class], li,
 table[class], thead, tbody, tr, th[colspan], td[colspan], pre, blockquote`.
 Classes: `term, muted, takeaways, refs, symbols, data`. No `style`, no `on*`, no `id`, no `script`.

@@ -4,7 +4,7 @@ How to write `lessons/<id>.json`. The schemas in `~/.claude/skills/learndoc/sche
 
 ## learndoc.json
 
-Full schema: `~/.claude/skills/learndoc/schemas/config.schema.json`; examples: `~/.claude/skills/learndoc/examples/*/learndoc.json`.
+Full schema: `~/.claude/skills/learndoc/schemas/config.schema.json`.
 
 ```json
 { "schemaVersion": 1, "language": "vi", "audience": "Learners studying model diffing",
@@ -97,7 +97,7 @@ Rules:
 
 ## Lesson skeleton
 
-A good lesson (the sample lessons have about 11 `h2` sections, boxes as the main unit, and about 5 quizzes) follows this order:
+A good lesson (typically about 11 `h2` sections, boxes as the main unit, and about 5 quizzes) follows this order:
 
 1. **Big picture** (`h2`): why the topic matters, in two or three short paragraphs; optionally a box linking it to the learner's goal.
 2. **Concepts** (one `h2` per concept): one or two framing paragraphs, then boxes: `def` for the precise statement, `formula` with a `symbols` table and a "how to read it" paragraph, `intuition`, `example` with real numbers. Add a figure or widget where seeing it beats reading it. Use `h3` for sub-steps.

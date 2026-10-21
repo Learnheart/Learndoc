@@ -23,7 +23,7 @@ The first run in a project also creates `.learndoc/`, runs `git init` when neede
 
 ## Receipt
 
-stdout is one JSON line. A real failing receipt (one `}` removed from a formula in the math example; warnings trimmed):
+stdout is one JSON line. A real failing receipt (one `}` removed from a formula in a lesson; warnings trimmed):
 
 ```json
 { "schemaVersion": 1, "ok": false, "command": "finalize", "status": "fail",
