@@ -146,6 +146,23 @@ test('an ask answer outside the HTML whitelist is retried, then failed', async (
   assert.deepEqual(store.notes(LESSON), []);
 });
 
+test('a new block without sources is retried in a cited lesson, and accepted in an imported one', async () => {
+  const insert = { op: 'insert', after: 'b-prose1', role: 'primary', block: { type: 'prose', html: '<p>Example: $[3,4]$.</p>' } };
+  const responses = [{ structured_output: { summary: 'Add an example.', changes: [insert] } }, { structured_output: { summary: 'Add an example.', changes: [insert] } }];
+  const cited = await setup(responses);
+  const failed = await cited.settle(cited.store.startEdit({ lessonId: LESSON, mode: 'insert', instruction: 'example', selection: sel('b-prose1', 'length') }));
+  assert.equal(failed.status, 'failed');
+  assert.equal(cited.fake.calls().length, 2);
+  assert.deepEqual([...new Set(failed.diagnostics.map((d) => d.code))], ['block/missing-sources']);
+
+  const imported = await setup(responses.slice(0, 1));
+  const file = path.join(imported.root, 'lessons', `${LESSON}.json`);
+  fs.writeFileSync(file, `${JSON.stringify({ ...imported.lessonOnDisk(), origin: { file: '../course/01-intro.html', sha256: 'a'.repeat(64) } }, null, 2)}\n`);
+  const ready = await imported.settle(imported.store.startEdit({ lessonId: LESSON, mode: 'insert', instruction: 'example', selection: sel('b-prose1', 'length') }));
+  assert.equal(ready.status, 'ready', ready.error);
+  assert.equal(ready.preview.blocks[2].sources, undefined);
+});
+
 test('needsConfirmation → needs_confirmation; confirm re-runs with maxRelated raised to the scope', async () => {
   const scope = ['b-prose1', 'b-box1', 'b-quiz1', 'b-head1'];
   const related = (blockId, block) => ({ op: 'replace', blockId, role: 'related', group: 'g-term', block, reason: 'uses the old term' });

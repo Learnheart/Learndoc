@@ -42,6 +42,24 @@
         "type": "string"
       }
     },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "sha256"
+      ],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
     "blocks": {
       "type": "array",
       "minItems": 1,
@@ -150,8 +168,7 @@
       "required": [
         "id",
         "type",
-        "html",
-        "sources"
+        "html"
       ],
       "properties": {
         "id": {
@@ -181,8 +198,7 @@
         "type",
         "variant",
         "title",
-        "html",
-        "sources"
+        "html"
       ],
       "properties": {
         "id": {
@@ -217,8 +233,7 @@
       "required": [
         "id",
         "type",
-        "latex",
-        "sources"
+        "latex"
       ],
       "properties": {
         "id": {
@@ -334,8 +349,7 @@
         "id",
         "type",
         "question",
-        "answer",
-        "sources"
+        "answer"
       ],
       "properties": {
         "id": {

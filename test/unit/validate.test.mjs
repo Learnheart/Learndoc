@@ -44,9 +44,9 @@ test('schema errors carry path, block id and supported fixes; discriminator nois
     block(lesson, 'b-1000').level = 4;
     block(lesson, 'b-1001').style = 'x';
     lesson.blocks.push({ id: 'b-7777', type: 'nope' });
-    delete block(lesson, 'b-1009').sources;
+    block(lesson, 'b-1009').sources = [];
   });
-  assert.deepEqual(codes(out).sort(), ['schema/additionalProperties', 'schema/enum', 'schema/enum', 'schema/required']);
+  assert.deepEqual(codes(out).sort(), ['schema/additionalProperties', 'schema/enum', 'schema/enum', 'schema/minItems']);
   const extra = out.find((entry) => entry.code === 'schema/additionalProperties');
   assert.deepEqual(extra.subject, { file: FILE, path: '/blocks/1', id: 'b-1001' });
   assert.deepEqual(extra.supportedFixes, ['remove unsupported property "style"']);
@@ -59,6 +59,18 @@ test('lesson-level semantic diagnostics', async (t) => {
   assert.deepEqual(codes(await run(null, { course: { ...course, modules: [{ ...course.modules[0], lessons: [] }] } })), ['lesson/not-in-course']);
   assert.deepEqual(codes(await run((l) => { block(l, 'b-1001').id = 'b-1000'; })), ['block/duplicate-id']);
   assert.deepEqual(codes(await run((l) => { block(l, 'b-1004').anchor = 'vectors'; })), ['heading/duplicate-anchor']);
+});
+
+test('sources: required outside imported lessons, optional with origin', async (t) => {
+  const { run } = await setup(t);
+  const origin = { file: '../course/a.html', sha256: 'a'.repeat(64) };
+  const missing = await run((l) => { delete block(l, 'b-1009').sources; });
+  assert.deepEqual(codes(missing), ['block/missing-sources']);
+  assert.deepEqual(missing[0].subject, { file: FILE, id: 'b-1009' });
+  assert.deepEqual(codes(await run((l) => { l.origin = origin; delete block(l, 'b-1009').sources; })), []);
+  assert.deepEqual(codes(await run((l) => { l.origin = origin; block(l, 'b-1009').sources = ['mml#p3']; })), ['refs/unknown-alias'],
+    'sources in an imported lesson are still checked');
+  assert.deepEqual(codes(await run((l) => { l.origin = { file: 'a.html', sha256: 'x' }; })), ['schema/pattern']);
 });
 
 test('source references: alias, kind, anchor, page range and unverified', async (t) => {

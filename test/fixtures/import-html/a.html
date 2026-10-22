@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lesson A page</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/site.js"></script>
+</head>
+<body>
+  <header class="site">Fixture site <nav><a href="index.html">Home</a> · <a href="b.html">Next</a></nav></header>
+  <main>
+    <header class="lesson-header">
+      <div class="kicker">Basics</div>
+      <h1>Lesson A: squares $x^2$</h1>
+      <p class="lede">Why squares matter. A short lede.</p>
+      <div class="meta">
+        <span class="chip"><b>Duration:</b> 10 min</span>
+        <span class="chip"><b>Level:</b> beginner</span>
+      </div>
+    </header>
+
+    <h2 id="intro">Introduction</h2>
+    <p>Inline math $x^2$ and \(y + 1\) and the \textsc{Adam} optimizer $\textsc{Adam}$. Use <code>$HOME</code> in a shell.</p>
+    <div class="eq">$$\sum_{i=1}^{n} x_i$$</div>
+    <ul><li>First point</li><li>Second point with $a \lt b$</li></ul>
+
+    <h3>Details</h3>
+    <table>
+      <tr><th colspan="2">Header</th></tr>
+      <tr><td>1</td><td>2</td></tr>
+    </table>
+    <h4>Deeper</h4>
+    <pre><code class="language-python"><span class="k">def</span> square(x):
+    <span class="k">return</span> x * x  <span class="s"># $not math$</span></code></pre>
+    <blockquote>A quoted remark.</blockquote>
+
+    <h2>Boxes and quiz</h2>
+    <div class="callout warning"><div class="callout-title">Careful with $k$</div><p>Do not divide by zero.</p></div>
+    <aside><p>An aside without a title.</p></aside>
+    <div class="box note"><div class="box-title">The &lt;BOS&gt; token</div><p>Every sequence starts with it.</p></div>
+    <details><summary>What is $1 + 1$?</summary><div class="answer"><p>It is $2$.</p></div></details>
+
+    <h2 id="figures">Figures</h2>
+    <svg width="120" height="60">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+      <rect x="1" y="1" width="20" height="20" style="fill: var(--plot-1)" fill-opacity="0.5"/>
+      <line x1="0" y1="50" x2="50" y2="50" stroke="black" marker-end="url(#arr)"/>
+      <text x="5" y="40" dy="2">x<tspan baseline-shift="sub">i</tspan></text>
+      <a href="b.html"><text x="60" y="40">linked</text></a>
+    </svg>
+    <figure><img src="img/dot.png" alt="A dot"><figcaption>The dot $d$</figcaption></figure>
+
+    <div class="demo" id="demo-x">
+      <div class="demo-title">Slide the value $s$</div>
+      <p class="hint">Drag the slider to change $s$.</p>
+      <div class="controls"><input type="range" min="0" max="1" step="0.1"></div>
+      <svg width="100" height="100"></svg>
+    </div>
+
+    <p>Links: <a href="b.html#sec-2">part two of B</a>, <a href="#intro">the intro</a>, <a href="http://example.com/">an insecure site</a> and <a href="https://example.com/">a secure site</a>.</p>
+  </main>
+  <footer>Fixture footer</footer>
+  <script>
+    (() => {
+      const demo = document.getElementById("demo-x");
+      demo.dataset.ready = "1";
+    })();
+    document.querySelector("main").insertAdjacentHTML("beforeend", "<p>SCRIPT RAN</p>");
+  </script>
+</body>
+</html>

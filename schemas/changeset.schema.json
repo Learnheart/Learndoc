@@ -165,8 +165,7 @@
       "additionalProperties": false,
       "required": [
         "type",
-        "html",
-        "sources"
+        "html"
       ],
       "properties": {
         "type": {
@@ -192,8 +191,7 @@
         "type",
         "variant",
         "title",
-        "html",
-        "sources"
+        "html"
       ],
       "properties": {
         "type": {
@@ -224,8 +222,7 @@
       "additionalProperties": false,
       "required": [
         "type",
-        "latex",
-        "sources"
+        "latex"
       ],
       "properties": {
         "type": {
@@ -325,8 +322,7 @@
       "required": [
         "type",
         "question",
-        "answer",
-        "sources"
+        "answer"
       ],
       "properties": {
         "type": {

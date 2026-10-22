@@ -20,8 +20,11 @@ const ajv = new Ajv2020({
   code: { source: true, esm: true },
 });
 const exportsMap = {};
-for (const name of ['config', 'course', 'lesson', 'changeset', 'answer']) {
-  const schema = readSchema(name);
+// Export names are the file names, except where a file name is not an identifier.
+const EXPORT_NAMES = { 'import-profile': 'importProfile' };
+for (const file of ['config', 'course', 'lesson', 'changeset', 'answer', 'import-profile']) {
+  const name = EXPORT_NAMES[file] ?? file;
+  const schema = readSchema(file);
   ajv.addSchema(schema);
   exportsMap[name] = schema.$id;
 }

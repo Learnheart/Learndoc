@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "language": "en",
+  "course": {
+    "order": "globals",
+    "globals": { "page": "index.html", "expr": "LESSONS", "lessonFields": { "key": "n", "file": "path", "module": "group", "title": "name" } },
+    "modules": [
+      { "id": "basics", "title": "Basics", "match": "^basics$" },
+      { "id": "advanced", "title": "Advanced", "match": "^advanced$" }
+    ]
+  },
+  "lesson": {
+    "root": "main",
+    "header": "header.lesson-header",
+    "lede": "p.lede",
+    "chips": ".meta .chip",
+    "chipRules": [
+      { "label": "duration", "to": "meta.duration" },
+      { "label": "prereq", "to": "prereq", "ref": "Lesson\\s*(\\d+)" }
+    ]
+  },
+  "boxes": { "fallbackTitles": { "note": "Side note" } },
+  "demos": {
+    "selector": "div.demo",
+    "chrome": ".controls",
+    "candidates": [{ "widget": "function-plot", "words": "slide", "maxControls": 2 }]
+  },
+  "code": { "highlightClasses": ["k", "s"] },
+  "svg": { "palette": [["--plot-1", "c1"], ["--plot-2", "c2"]], "surfaceVars": ["--surface"] }
+}

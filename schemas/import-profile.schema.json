@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learndoc.local/schemas/import-profile.schema.json",
+  "title": "import-profile.json",
+  "description": "How `learndoc import` reads an existing HTML course. Every key is optional; regular expressions are strings.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "string",
+          "minLength": 1,
+          "description": "JavaScript regular expression source"
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "description": "JavaScript regular expression source"
+          }
+        }
+      }
+    },
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "selector": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "CSS selector"
+                }
+              },
+              "required": [
+                "from",
+                "selector"
+              ]
+            }
+          ]
+        },
+        "order": {
+          "enum": [
+            "globals",
+            "index-links",
+            "filename"
+          ]
+        },
+        "globals": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "page": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expr": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Expression evaluated in the page; must return an array of lesson records"
+            },
+            "lessonFields": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "file": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "module": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "match": {
+                "type": "string",
+                "minLength": 1,
+                "description": "JavaScript regular expression source"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "match"
+            ]
+          }
+        }
+      }
+    },
+    "lesson": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "header": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "lede": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "kicker": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "chips": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "chipRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "description": "JavaScript regular expression source"
+              },
+              "to": {
+                "enum": [
+                  "meta.duration",
+                  "prereq",
+                  "prose"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "description": "prereq rules: regular expression whose first group (else whole match) names a lesson; numbers listed after it (\"Bài 09, 11\") and ranges (\"01–03\") are included. Default: every number in the chip. A keyword-anchored ref such as \"Bài\\\\s*(\\\\d+)\" is recommended."
+              }
+            },
+            "required": [
+              "label",
+              "to"
+            ]
+          }
+        },
+        "headingLevels": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "h6"
+            ]
+          },
+          "additionalProperties": {
+            "enum": [
+              2,
+              3
+            ]
+          }
+        }
+      }
+    },
+    "boxes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "classPattern": {
+          "type": "string",
+          "minLength": 1,
+          "description": "JavaScript regular expression source"
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          }
+        },
+        "variantMap": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          }
+        },
+        "fallbackTitles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "boxTypes": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "color": {
+                "enum": [
+                  "c1",
+                  "c2",
+                  "c3",
+                  "c4",
+                  "c5",
+                  "c6"
+                ]
+              }
+            },
+            "required": [
+              "label",
+              "color"
+            ]
+          }
+        }
+      }
+    },
+    "demos": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "selector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "hint": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "chrome": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "widget": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              "words": {
+                "type": "string",
+                "minLength": 1,
+                "description": "JavaScript regular expression source"
+              },
+              "js": {
+                "type": "string",
+                "minLength": 1,
+                "description": "JavaScript regular expression source"
+              },
+              "maxControls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "widget"
+            ]
+          }
+        }
+      }
+    },
+    "quiz": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "selector": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        },
+        "answer": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS selector"
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "highlightClasses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "defaultLanguage": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9+#._-]{0,31}$"
+        }
+      }
+    },
+    "svg": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "palette": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "pattern": "^--"
+              },
+              {
+                "enum": [
+                  "c1",
+                  "c2",
+                  "c3",
+                  "c4",
+                  "c5",
+                  "c6",
+                  "axis",
+                  "grid",
+                  "muted"
+                ]
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "surfaceVars": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^--"
+          }
+        }
+      }
+    }
+  }
+}
