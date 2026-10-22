@@ -6,7 +6,7 @@ A [Claude Code](https://claude.com/claude-code) skill that turns a prompt plus y
 accept or cancel.
 
 ## Demo
-/Users/linhbk3/Documents/Projects/Learndoc/Screen Recording 2026-10-22 at 17.08.38.mov
+https://github.com/user-attachments/assets/6a6af30a-d542-4ff8-b18b-83a76d9aade7
 
 ![Select a passage and ask for a change](docs/images/edit-prompt.png)
 
