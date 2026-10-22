@@ -32,7 +32,7 @@
       "svg": ["viewBox", "width", "height", "role", "aria-label"],
       "g": [],
       "defs": [],
-      "marker": ["id", "viewBox", "refX", "refY", "markerWidth", "markerHeight", "orient"],
+      "marker": ["id", "viewBox", "refX", "refY", "markerWidth", "markerHeight", "orient", "markerUnits"],
       "line": [],
       "rect": [],
       "circle": [],
@@ -48,7 +48,8 @@
     "presentationAttributes": [
       "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "width", "height", "d", "points",
       "transform", "fill", "stroke", "stroke-width", "stroke-dasharray", "opacity", "text-anchor",
-      "dominant-baseline", "font-size", "font-weight", "marker-start", "marker-end", "clip-path", "class"
+      "dominant-baseline", "font-size", "font-weight", "marker-start", "marker-end", "clip-path", "class",
+      "dx", "dy", "baseline-shift", "stroke-linecap", "stroke-linejoin"
     ],
     "classes": ["c1", "c2", "c3", "c4", "c5", "c6", "fill-soft", "stroke-only", "axis", "grid", "muted"]
   }

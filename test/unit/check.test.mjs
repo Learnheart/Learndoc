@@ -33,6 +33,7 @@ test('KaTeX parses every math occurrence: html, plain, math blocks', (t) => {
   assert.deepEqual(codes(run((l) => { block(l, 'b-1000').text = 'Bad $\\notacommand$'; })), ['math/katex']);
   assert.deepEqual(codes(run((l) => { block(l, 'b-1005').latex = '\\begin{x}'; })), ['math/katex']);
   assert.deepEqual(codes(run((l) => { block(l, 'b-1009').question = 'Where $\\text{Đáp án}$ and $a<b$?'; })), [], 'unicode text and < in plain math are fine');
+  assert.deepEqual(codes(run((l) => { block(l, 'b-1005').latex = '\\textsc{Adam} \\textsc{Adam}'; })), [], '\\textsc is a shared macro');
 });
 
 test('html whitelist: tags, attributes, classes, syntax, balance, entities', (t) => {
@@ -55,7 +56,12 @@ test('html whitelist: tags, attributes, classes, syntax, balance, entities', (t)
 
 test('plain fields: no tags (math may contain <), entities are literal', (t) => {
   const { run } = setup(t);
-  assert.deepEqual(codes(run((l) => { block(l, 'b-1002').title = '<b>Bold</b>'; })), ['plain/tag']);
+  for (const title of ['<b>Bold</b>', 'a <div class="x">', 'x</span>', '<img src=x>', '<!-- note -->', '<h2>T</h2>', '<script>']) {
+    assert.deepEqual(codes(run((l) => { block(l, 'b-1002').title = title; })), ['plain/tag'], title);
+  }
+  for (const title of ['The <BOS> token', 'Vec<T> and Option<Box<T>>', 'a<b', 'if a<b then 2<3', '<Enter> key', 'x <bold> y']) {
+    assert.deepEqual(codes(run((l) => { block(l, 'b-1002').title = title; })), [], title);
+  }
   const entity = run((l) => { block(l, 'b-1002').title = 'A &amp; B'; });
   assert.deepEqual(codes(entity), ['plain/entity']);
   assert.equal(entity[0].severity, 'warning');
@@ -87,6 +93,8 @@ test('svg whitelist: root, tags, attributes, ids, classes, url(#id) references',
   assert.deepEqual(codes(run(svg('<line marker-end="url(#missing)"/>'))), ['svg/reference']);
   assert.deepEqual(codes(run(svg('<rect fill="url(https://e.com/x)"/>'))), ['svg/reference']);
   assert.deepEqual(codes(run(svg('<clipPath id="c"><rect/></clipPath><g clip-path="url(#c)"><text x="1">a &amp; b</text></g>'))), []);
+  assert.deepEqual(codes(run(svg('<defs><marker id="m" markerUnits="strokeWidth"><path/></marker></defs><line stroke-linecap="round" stroke-linejoin="round" marker-end="url(#m)"/><text dx="1" dy="2"><tspan baseline-shift="sub">i</tspan></text>'))), []);
+  assert.deepEqual(codes(run(svg('<line stroke-linecap="url(#nope)"/>'))), ['svg/reference'], 'url() is still checked on new attributes');
   assert.deepEqual(codes(run((l) => { block(l, 'b-1007').svg = '<svg></svg><p>x</p>'; })), ['svg/root', 'svg/tag']);
   assert.deepEqual(codes(run(svg('<g>'))), ['svg/unbalanced']);
 });

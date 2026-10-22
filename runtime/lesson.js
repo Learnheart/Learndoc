@@ -1,5 +1,6 @@
 // Lesson page boot: theme, KaTeX rendering, widget mounting, TOC highlighting.
 // Also the API the editor and browser-check use, exported and on window.learndoc.
+import { katexOptions } from '../shared/katex-options.mjs';
 
 const THEME_KEY = 'learndoc-theme';
 const RENDER_URL = '/static/shared/render.mjs';
@@ -78,8 +79,7 @@ export function renderMath(root = document) {
       continue;
     }
     try {
-      // strict 'ignore': non-Latin text inside \text{} (e.g. Vietnamese) is valid content, not a warning.
-      katex.render(latex, span, { displayMode: span.dataset.display === '1', throwOnError: false, strict: 'ignore' });
+      katex.render(latex, span, katexOptions(span.dataset.display === '1', false));
     } catch (err) {
       span.textContent = latex;
       console.error('learndoc: KaTeX failed', latex, err);
