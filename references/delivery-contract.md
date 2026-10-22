@@ -8,7 +8,7 @@ How `finalize` checks your files, how to read its receipt, how to repair a failu
 node <skill-dir>/bin/learndoc.mjs finalize <file> --json
 ```
 
-learndoc needs Node 22 or newer. Run it from the project root on each file you write, in this order: `learndoc.json` first (this chunks the references; read `references/chunks/<alias>/index.json` for citable anchors and pages before planning), then `course.json`, then each `lessons/<id>.json` as soon as it is written. The target kind follows from the path: `learndoc.json` checks the config; `course.json` checks config and course; `lessons/<id>.json` checks everything.
+learndoc needs Node 22 or newer. Run it from the project root on each file you write, in this order: `learndoc.json` first (this indexes the references; read `.learndoc/refs/<alias>.json` for citable anchors and pages before planning), then `course.json`, then each `lessons/<id>.json` as soon as it is written. The target kind follows from the path: `learndoc.json` checks the config; `course.json` checks config and course; `lessons/<id>.json` checks everything.
 
 Gates run in order and stop at the first that does not pass:
 
@@ -19,7 +19,7 @@ Gates run in order and stop at the first that does not pass:
 | `check` | KaTeX parses every formula; tags and classes are in the whitelist; anchors, in-lesson and cross-lesson links and `prereq` resolve; `course.json` matches the files in `lessons/`. |
 | `browser-check` | Headless Chrome opens the page: no console errors, and every widget mounts, updates and unmounts cleanly (lessons only). |
 
-The first run in a project also creates `.learndoc/`, runs `git init` when needed, and chunks references into `references/chunks/<alias>/`.
+The first run in a project also creates `.learndoc/`, runs `git init` when needed, and indexes references into `.learndoc/refs/` (an index per reference, plus the extracted text of each PDF; nothing is copied out of Markdown references). A lesson or course that does not fail also refreshes the standalone pages in `html/`; a lesson receipt's `artifact` is that lesson's page there.
 
 ## Receipt
 
@@ -39,7 +39,6 @@ stdout is one JSON line. A real failing receipt (one `}` removed from a formula 
     { "code": "refs/missing-file", "severity": "warning", "message": "reference \"mml\" points to references/mathematics-for-ml.pdf, which does not exist; …",
       "subject": { "reference": "mml", "file": "references/mathematics-for-ml.pdf" }, "supportedFixes": ["…"] } ],
   "diagnosticSummary": { "total": 6, "shown": 6, "truncated": false },
-  "artifact": { "path": "/home/me/course/.learndoc/build/03-inner-product-cosine.html", "sha256": "b5857eaa…" },
   "commit": null,
   "nextAction": { "action": "edit-in-place", "file": "/home/me/course/lessons/03-inner-product-cosine.json",
     "constraint": "Apply each diagnostic's supportedFixes (or the fix its message names) to the existing file; keep block ids and unaffected content unchanged; do not rewrite the whole file.",
@@ -60,6 +59,10 @@ stdout is one JSON line. A real failing receipt (one `}` removed from a formula 
 | 1 | `fail` | A gate failed. Repair. |
 | 2 | `skipped` | Content gates passed; `browser-check` could not run because Chrome/Chromium is missing. |
 | 64 | – | Usage error: unknown command or option, more than one file, a file that is not `learndoc.json`, `course.json` or `lessons/<id>.json`, or a file that does not exist. Fix the command, not the content. |
+
+## Import
+
+`import <source-dir> [--profile <file>] --json` converts an existing HTML course; see the [import contract](import-contract.md). It runs all finalize gates for the config, the course and every lesson without per-lesson commits, then makes one commit, `learndoc: import <N> lessons from <dir>`. Its receipt is one JSON line: `{ schemaVersion, ok, command: "import", status, lessons: { total, pass, fail }, pendingDemos: { total, withCandidate }, report, commit, diagnostics, diagnosticSummary, durationMs }`. `report` is the absolute path of `.learndoc/import/report.json`. Exit 0 means every lesson passed; exit 1 means a setup error (`report: null`; read the diagnostics; for example `import/target-inside-source`) or failing gates (the project is still written and committed). Skipped pages (`import/redirected`, `import/empty-page`) are warnings. Fix the profile, never the lessons, and import into a new folder; see the [import flow](import-contract.md#import-flow). Exit 64 is a usage error.
 
 ## Repair
 

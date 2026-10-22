@@ -16,7 +16,7 @@ learndoc/                       (the skill directory; any folder name, global or
 ├── LICENSE
 ├── package.json                devDependencies + generate/vendor/test scripts only
 ├── THIRD_PARTY_NOTICES.md
-├── bin/learndoc.mjs            CLI: finalize, serve
+├── bin/learndoc.mjs            CLI: finalize, serve, import
 ├── lib/                        Node-only
 │   ├── diagnostics.mjs         diagnostic + receipt helpers
 │   ├── project.mjs             locate project root, load/parse json files, bootstrap .learndoc/ + git
@@ -26,9 +26,12 @@ learndoc/                       (the skill directory; any folder name, global or
 │   ├── page.mjs                full HTML page shells (lesson page, course index page)
 │   ├── chrome.mjs              findChrome + PipeCdp + browser-check (ported from archify, MIT)
 │   ├── static-server.mjs       tiny static handler shared by browser-check and the edit server
-│   ├── refs.mjs                reference chunking (markdown by heading, pdf by page)
+│   ├── refs.mjs                reference index (markdown sections by heading with line ranges, pdf pages)
 │   ├── git.mjs                 git helpers (init-if-needed, commit paths, log, revert)
-│   └── finalize.mjs            gate pipeline + receipt
+│   ├── finalize.mjs            gate pipeline + receipt
+│   ├── export.mjs              standalone html/ pages (assets inlined), launcher, preferred port
+│   ├── import.mjs              `import`: order, convert, gates, one commit, report
+│   └── import/                 profile.mjs (defaults + checks), extract-page.js (in-Chrome extractor)
 ├── server/                     edit server (Node-only)
 │   ├── cli.mjs                 `serve`: preflight (Node, claude), reuse/spawn, open browser
 │   ├── server.mjs              http server, auth, routes
@@ -44,7 +47,8 @@ learndoc/                       (the skill directory; any folder name, global or
 │   ├── render.mjs              lesson/block → HTML string
 │   ├── textview.mjs            flat text view of a field (from source string or from DOM)
 │   ├── diff.mjs                sentence-level text diff for preview
-│   └── mini-schema.mjs         tiny JSON-schema subset validator (widget props)
+│   ├── mini-schema.mjs         tiny JSON-schema subset validator (widget props)
+│   └── katex-options.mjs       KaTeX options + macros shared by check and the page
 ├── runtime/                    browser-only
 │   ├── lesson.js               boot: theme, KaTeX render, widget mount, TOC
 │   ├── editor.js               editor boot (only on editable pages)
@@ -53,9 +57,9 @@ learndoc/                       (the skill directory; any folder name, global or
 │   ├── widgets/                built-in widgets: vector-plane.js, distribution-bars.js, function-plot.js
 │   └── vendor/katex/           katex.min.js, katex.min.css, fonts/, katex.mjs (Node check)
 │       vendor/pdfjs/           pdf.mjs + pdf.worker.mjs (legacy build, Node text extraction)
-├── schemas/                    config, course, lesson, changeset, answer (*.schema.json), html-whitelist.json
+├── schemas/                    config, course, lesson, changeset, answer, import-profile (*.schema.json), html-whitelist.json
 ├── references/                 authoring-contract.md, course-planning.md, edit-contract.md,
-│                               widget-catalog.md, delivery-contract.md
+│                               widget-catalog.md, delivery-contract.md, import-contract.md
 ├── scripts/                    generate-validators.mjs, vendor-katex.mjs, vendor-pdfjs.mjs
 └── test/                       unit/ (node:test), fixtures/, fake-claude/ (LEARNDOC_CLAUDE_BIN stub),
                                 e2e/ (CDP-driven UI journey)
@@ -101,26 +105,33 @@ Labels are localized by `language` (`vi`, `en`; fallback `en`).
 { "schemaVersion": 1, "id": "slug (== file name)", "title": "string", "lede": "string?",
   "meta": { "duration": "string?", "level": "string?" },
   "notation": { "<latex>": "meaning" },
+  "origin": { "file": "path relative to the project", "sha256": "64 hex" }?,
   "blocks": [ Block ] }
 ```
+`origin` marks an imported lesson (set by `import`). Without it, every prose, box, math and quiz block needs
+`sources` (`block/missing-sources`); with it, `sources` is optional, and present ones are checked as usual.
 Blocks (all have `id`, `type`; `additionalProperties: false`):
 | type | fields | text fields (selectable) |
 |---|---|---|
 | heading | `level` 2\|3, `anchor` slug, `text` | `text` (plain text + inline math) |
-| prose | `html`, `sources` (minItems 1) | `html` |
-| box | `variant` slug, `title`, `html`, `sources` (minItems 1) | `title` (plain + math), `html` |
-| math | `latex`, `sources` (minItems 1) | `latex` (whole formula only) |
+| prose | `html`, `sources`* | `html` |
+| box | `variant` slug, `title`, `html`, `sources`* | `title` (plain + math), `html` |
+| math | `latex`, `sources`* | `latex` (whole formula only) |
 | code | `language`, `code`, `caption?` | `code`, `caption` |
 | figure | `svg?` xor `src?` (assets/ path), `alt`, `caption` | `caption` (plain + math) |
 | widget | `widget` slug, `props` object | none (whole block only) |
-| quiz | `question` (plain + math), `answer` html, `sources` (minItems 1) | `question`, `answer` |
+| quiz | `question` (plain + math), `answer` html, `sources`* | `question`, `answer` |
+
+\* minItems 1 when present; required unless the lesson has `origin`.
 
 Field kinds:
 - **html** fields: whitelisted HTML (see `html-whitelist.json`) + inline math `$…$` and display math `$$…$$`.
   Literal `<` inside math must be `\lt` or `&lt;`. `\$` is a literal dollar. `\[ \]`, `\( \)` are rejected.
-- **plain** fields (`text`, `title`, `question`, `caption`, `alt`): no tags; may contain `$…$` math.
+- **plain** fields (`text`, `title`, `question`, `caption`, `alt`): no real HTML elements (`plain/tag`) and no entities
+  (`plain/entity`); text that only looks like a tag (`<BOS>`, `Vec<T>`, `a<b`) is allowed; may contain `$…$` math.
   Rendered with HTML escaping; math wrapped like html fields.
 - `latex`, `code`: raw strings.
+- KaTeX runs with `shared/katex-options.mjs` everywhere: `strict: 'ignore'`, macro `\textsc{…}` → `\text{…}`.
 
 Cross-lesson links inside html: `<a href="lesson:<id>">` or `<a href="lesson:<id>#<anchor>">`.
 In-lesson: `<a href="#<anchor>">`. External: `https://…` only.
@@ -131,9 +142,9 @@ Tags → allowed attributes (v1 set):
 table[class], thead, tbody, tr, th[colspan], td[colspan], pre, blockquote`.
 Classes: `term, muted, takeaways, refs, symbols, data`. No `style`, no `on*`, no `id`, no `script`.
 
-Figure `svg` field has its own whitelist: tags `svg[viewBox,width,height,role,aria-label]`, `g, defs, marker[id,viewBox,refX,refY,markerWidth,markerHeight,orient]`, `line, rect, circle, ellipse, path, polygon, polyline, text, tspan, title, clipPath[id]` with geometry/presentation attributes (`x y x1 y1 x2 y2 cx cy r rx ry width height d points transform fill stroke stroke-width stroke-dasharray opacity text-anchor dominant-baseline font-size font-weight marker-start marker-end clip-path class`), `id` only on `marker`/`clipPath`, `url(#id)` references only to ids in the same svg. SVG classes: `c1..c6, fill-soft, stroke-only, axis, grid, muted`. No `style`, `on*`, `href`, `foreignObject`, `image`, `script`.
+Figure `svg` field has its own whitelist: tags `svg[viewBox,width,height,role,aria-label]`, `g, defs, marker[id,viewBox,refX,refY,markerWidth,markerHeight,orient,markerUnits]`, `line, rect, circle, ellipse, path, polygon, polyline, text, tspan, title, clipPath[id]` with geometry/presentation attributes (`x y x1 y1 x2 y2 cx cy r rx ry width height d points transform dx dy fill stroke stroke-width stroke-dasharray stroke-linecap stroke-linejoin opacity text-anchor dominant-baseline baseline-shift font-size font-weight marker-start marker-end clip-path class`), `id` only on `marker`/`clipPath`, `url(#id)` references only to ids in the same svg. SVG classes: `c1..c6, fill-soft, stroke-only, axis, grid, muted`. No `style`, `on*`, `href`, `foreignObject`, `image`, `script`.
 
-PDF page numbers in `sourceRef` are 1-based indexes into the PDF file (what the chunker and Claude's Read tool use), not printed page numbers.
+PDF page numbers in `sourceRef` are 1-based indexes into the PDF file (what the indexer and Claude's Read tool use), not printed page numbers.
 
 ### Changeset (Claude output, `changeset.schema.json`; single object, fields optional, validated locally)
 ```json
@@ -160,7 +171,7 @@ export function resolveBoxTypes(config)   // merged {name: {label, color}} for c
 export function wrapMath(text, kind)      // kind 'html' | 'plain' -> HTML string; plain is escaped first
 export function renderBlock(block, ctx)   // -> '<section ...>...</section>'
 export function renderLessonBody(lesson, ctx) // -> blocks HTML (no page chrome)
-// ctx = { boxTypes, lessonId, linkBase: '/lessons/' }
+// ctx = { boxTypes, lessonId, linkBase: '/lessons/' | (target) => href, assetUrl?: (src) => url }
 ```
 DOM conventions (editor + textview depend on these exactly):
 - Block: `<section class="ld-block ld-<type>" data-block-id="<id>" data-type="<type>">`.
@@ -172,7 +183,8 @@ DOM conventions (editor + textview depend on these exactly):
   `n` counting from 0 per field in order of appearance. `lesson.js` renders KaTeX into the span.
 - Widget: `<div class="ld-widget" data-widget="<name>" data-props="<attr-escaped json>"></div>` inside the section.
 - Heading: `<h2|h3 id="<anchor>" data-field="text">`.
-- Links `lesson:<id>#a` → `<linkBase><id>#a`.
+- Links `lesson:<id>#a` → `<linkBase><id>#a`, or `linkBase('<id>#a')` when it is a function.
+- Figure `src` → `assetUrl(src)`, default `/project/<src>`.
 
 ## 4. Text view (`shared/textview.mjs`)
 
@@ -241,9 +253,13 @@ else spawn detached `serve --foreground` (log `.learndoc/server.log`), wait for 
 `{ "ok": true, "url": "http://127.0.0.1:<port>/?t=<token>", "lessonUrl"?: "...", "pid", "port", "reused" }`;
 `lessonUrl` is present only with `--lesson` (reopening without a lesson replies with `url`).
 `server.json`: `{ pid, port, token, startedAt, projectRoot }` (mode 0600).
+Port: `--port N`, else the project's preferred port (`preferredPort(root)`: 41000 + sha256(realpath) mod 8000, the
+port standalone pages link to), else any free port when that one is taken. The foreground server refreshes the
+standalone export at start and after every accept or restore (`startServer({ exportPages: true })`). Every server
+start bootstraps the project and indexes its references first (edits validate sources against that index).
 
 Auth: bind `127.0.0.1`. Random 32-byte hex token per start. First page load with `?t=<token>` sets cookie
-`ld_t` (HttpOnly, SameSite=Strict, Path=/). Every request except `/api/health` and `/static/*` needs a valid
+`ld_t` (HttpOnly, SameSite=Lax, Path=/; Lax so the Edit link of a `file://` page carries it). Every request except `/api/health` and `/static/*` needs a valid
 cookie. Every `/api/*` non-GET request additionally needs header `X-Learndoc-Token: <token>` and an `Origin`
 equal to `http://127.0.0.1:<port>`. `Host` must be `127.0.0.1:<port>` or `localhost:<port>`. Failures → 403.
 
@@ -350,13 +366,25 @@ export default { name, propsSchema, mount(el, props, ctx) { return { update(prop
 ## 10. finalize (`bin/learndoc.mjs finalize <file> [--json]`)
 
 Target kinds by path: `learndoc.json` → config; `course.json` → config+course; `lessons/<id>.json` → all.
-First run in a project: create `.learndoc/` (+ `.gitignore` with `server.json`, `server.log`, `build/`,
-`changesets/`), `git init` if not inside a work tree, chunk references into `references/chunks/<alias>/`.
-Gates: `validate → render → check → browser-check` (lesson only for render/browser-check).
+First run in a project: create `.learndoc/` (+ `.gitignore` with `server.json`, `server.log`, `changesets/`, `import/`,
+`refs/`; missing entries are appended to an existing one), `git init` if not inside a work tree, index references into
+`.learndoc/refs/`. Bootstrap also removes `.learndoc/build/`, and indexing removes `references/chunks/<alias>/` folders
+that hold an `index.json` (both written by earlier versions).
+Reference index v3 (`lib/refs.mjs`, regenerated when the source's size or mtime changes): `.learndoc/refs/<alias>.json`
+= `{ schemaVersion: 3, alias, type, source: { file, size, mtimeMs } }` plus, for markdown, `anchors: [{ anchor, title,
+level, lines: [from, to] }]` (1-based inclusive lines of the reference file, blank edges trimmed; a section includes its
+subsections), or, for pdf, `pages, pagesWithoutText, pagesFile, pageLines: [[from, to]…]` (lines of
+`.learndoc/refs/<alias>.pages.txt`, where each page follows a `=== page N ===` line; an empty page has `to < from`).
+Nothing is copied out of a markdown reference. `sourceExcerpt(root, config, parsedRef)` returns a section (re-read from
+the reference file) or a page range, for the edit context pack.
+Gates: `validate → render → check → browser-check` (lesson only for render/browser-check). The page is rendered and
+browser-checked in memory; nothing is written for it except the standalone export.
 Gate status values: `pass | fail | skipped | not-run`.
 Receipt (stdout, one JSON line): `{ schemaVersion:1, ok, command:'finalize', status: pass|fail|skipped,
 target:{kind,path,sha256}, gates:{validate,render,check,'browser-check'}, failedStage?, diagnostics[≤8],
 diagnosticSummary:{total,shown,truncated,omittedByCode?}, artifact?, commit? (lesson targets), nextAction?, durationMs }`.
+`artifact` (`{ path, sha256 }`) is the lesson's standalone page `html/<id>.html`, present when the lesson did not fail
+and the export wrote it.
 `target.path` is absolute. `omittedByCode` (`{code: count}`) is present only when truncated. `nextAction` is present only
 when `validate` or `check` failed: `{ action: 'edit-in-place', file: <absolute path>, constraint: string,
 then: 'finalize-once' }`. Gate `not-run` = an earlier gate failed; `skipped` = not applicable to the target kind,
@@ -367,6 +395,54 @@ Diagnostic: `{ code: 'area/kind', severity, message, subject: object, evidence?:
 (e.g. `math/katex`, subject `{ file, id, field }`, evidence `{ latex }`).
 Exit: 0 pass, 1 fail, 2 skipped (Chrome missing), 64 usage error (unknown command/option, not exactly one file,
 unsupported target path, missing file).
+Internal option: `runFinalize({ file, cwd, env, commit: false })` runs every gate and the canonical rewrite but does not
+commit (used by import, which commits once). The CLI always commits.
+
+## 10a. Standalone export (`lib/export.mjs`)
+
+`exportSite(root)` → `{ dir, pages, skipped, launcher }` or `null` (no readable config/course). Writes
+`<project>/html/index.html` and `html/<id>.html` for every non-planned lesson that loads and renders (others are
+`skipped`), through `page.mjs` with a file target: links between files; `style.css` and, with math, KaTeX
+(`katex.min.css`, `katex.min.js`, `fonts/*.woff2`) linked from `html/_assets/`; figure images copied to
+`html/_assets/media/<src>`; `lesson.js` as an inline module whose local imports are rewritten to data: URLs and
+`#ld-widgets` holding data: URLs of the widgets the lesson uses (browsers do not load module scripts from file://).
+Files under `html/_assets/` that no page links to any more are removed. The `html/` folder is self-contained. Pages carry `<meta name="generator" content="learndoc export">`;
+only `.html` files with that meta are removed when their lesson is gone. The topbar gets an Edit link to
+`http://127.0.0.1:<preferredPort>/lessons/<id>`: it probes `/api/health` (no-cors fetch) and navigates when something
+answers, else shows how to use the launcher. Without a valid cookie the server answers page GETs with a 403 HTML
+page that says the same. The launcher `<Mở khoá học|Open course>.<command|cmd|sh>` (bash; `.cmd` on Windows) runs
+`serve` with the PATH and node seen at export time. Files are replaced by rename (the launcher's server exports
+while the shell still reads it). `/html/` and the launcher are appended once to the repository's `info/exclude`.
+Callers: finalize (pass/skipped, config targets excluded; a failure is warning `export/failed`), the server.
+
+## 10b. import (`bin/learndoc.mjs import <source-dir> [--profile <file>] [--json]`)
+
+Run in the target folder; refuses one holding `learndoc.json`, `course.json` or `lessons/`
+(`import/target-exists`) or equal to the source folder (`import/target-is-source`) or inside it (`import/target-inside-source`). Needs Chrome
+(`import/chrome-missing`): network is cut off browser-wide (dead proxy plus blocked `http(s)://`/`ws(s)://`), and pages
+are opened with scripts disabled; `course.globals` alone evaluates with scripts on. Invalid CSS selectors in the profile
+are `import/profile-invalid`, checked before any page. Pages that redirect (meta refresh) or have no blocks are skipped
+with warnings `import/redirected` / `import/empty-page`. `iframe`, `video`, `audio`, `object`, `embed` are dropped
+(counted `tag:<name>`). Heading anchors that would read as page refs (`p1`) get `-section`. Profile: `import-profile.json` at the target root
+or `--profile`, validated by `schemas/import-profile.schema.json` + `lib/import/profile.mjs` (`import/profile-invalid`),
+merged over `DEFAULT_PROFILE` (objects per key; arrays and strings replace). A given profile is copied into the
+project as `import-profile.json` (`formatJson` of the parsed file) and its sha256 is `profileSha`; without one nothing
+is written and `profileSha` is null. The resolved profile (plus the detected `language`: profile, else the first
+lesson page's `<html lang>`, else `en`) is never written. Order: `course.order` with fallback
+`globals → index-links → filename` (`import/order-fallback`). Output: `learndoc.json` (`features.math: true`; no
+`references`, since an imported page is content, not a source), `course.json` (all `done`, no `sources`; `prereq` from `chipRules` with `to: "prereq"`: `ref` (default `\d+`) is applied globally over the chip text,
+each match's first group (else the match) names a lesson by globals key, id or numeric id prefix; list continuation
+after a match through `(…)` + `,` `;` `/` `&` `và` `and`; `NN-MM`/`NN–MM`/`NN—MM` ranges expand by lesson number;
+a keyword-anchored `ref` like `Bài\s*(\d+)` is recommended), `lessons/<id>.json` (id = slugified page path ≤ 64 chars; block ids `b-` + 8 hex; `origin` = the page path
+relative to the project and the sha256 of its bytes; no block `sources`),
+`assets/`, `.learndoc/import/report.json`, `.learndoc/import/demos/<lesson>--<demoId>.{html,js}`. Demos become `note`
+boxes. Gates: finalize (`commit: false`) on config, course and each lesson; then one commit of config, course,
+lessons, the copied assets and the profile (only when one was given), even when some lessons fail: `learndoc: import <N> lessons from <dir>` (`import/commit-failed` = warning).
+Receipt: `{ schemaVersion:1, ok, command:'import', status: pass|fail, lessons:{total,pass,fail},
+pendingDemos:{total,withCandidate}, report: <absolute path>|null, commit, diagnostics[≤8], diagnosticSummary, durationMs }`.
+`pendingDemos[]` in the report: `{ lesson, blockId, demoId, title, hintText, htmlFile, jsFile|null, controls, svgs,
+canvases, candidate: {widget, reason}|null, status: 'pending' }`; `status` reflects import time only (later demo
+conversions do not update the report). Exit: 0 pass, 1 fail, 64 usage error.
 
 ## 11. Accepted deviations (implementation is authoritative)
 
@@ -387,3 +463,7 @@ Recorded after review; the sections above already reflect them.
 - `finalize` rewrites a passing (or skipped) lesson file as canonical 2-space JSON and commits it with `learndoc.json`
   and `course.json`; the receipt carries `commit`.
 - Node floor is 22.
+- Plain fields reject only real HTML elements, so `<BOS>` or `Vec<T>` is valid text.
+- KaTeX macro `\textsc` → `\text`, shared via `shared/katex-options.mjs`.
+- SVG whitelist adds `dx`, `dy`, `baseline-shift`, `markerUnits`, `stroke-linecap`, `stroke-linejoin`.
+- `import` is a third internal command (§10b); `finalize` gains the internal `commit: false` option for it.

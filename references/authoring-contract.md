@@ -65,7 +65,7 @@ Give every box a specific title that names its content, such as `Definition — 
 Allowed classes: `term` (a key term on first use, on `span`), `muted` (secondary remark, on `span` or `p`), `takeaways` (summary list, `ol`), `refs` (reference list, `ul`), `symbols` (symbol table under a formula, `table`), `data` (data table, `table`).
 No `style`, no `id`, no `on*`, no `script`, no other tags. Escape literal `<`, `>`, `&` in text as `&lt;`, `&gt;`, `&amp;`.
 
-**plain fields** (`text`, `title`, `question`, `caption`, `alt`, `lede`): no tags and no entities (`&amp;` would show literally); write `&`, `<` as plain characters. They may contain inline math.
+**plain fields** (`text`, `title`, `question`, `caption`, `alt`, `lede`): no HTML tags and no entities (`&amp;` would show literally); write `&`, `<` as plain characters. Text that only looks like a tag is fine (`<BOS>`, `Vec<T>`, `a<b`), but real element names such as `<s>`, `</s>` or `<i>` are still rejected; write such tokens as `‹s›` or inside math, `$\text{<s>}$`. They may contain inline math.
 
 **Math** (only when `features.math` is true):
 - Inline `$…$`, display `$$…$$`. Nothing else: `\(…\)` and `\[…\]` are rejected.
@@ -78,10 +78,10 @@ No `style`, no `id`, no `on*`, no `script`, no other tags. Escape literal `<`, `
 
 ## Sources and grounding
 
-`sources` is required on `prose`, `box`, `math` and `quiz`, with at least one entry:
+`sources` is required on `prose`, `box`, `math` and `quiz`, with at least one entry (only an imported lesson, one with `origin`, may leave it out; see the [import contract](import-contract.md#what-it-writes)):
 
-- PDF: `alias#p71` or `alias#p71-73`, optionally with a display label after `|`: `mml#p77|§3.1`, `mml#p82-83|§3.4, eq. 3.25`. Page numbers are the **PDF page index** (1-based, as a PDF viewer counts them and as the chunk files `references/chunks/<alias>/p0077.txt` are named), not the number printed on the page.
-- Markdown or web snapshot: `alias#heading-anchor`, naming a heading of that file: `notes#what-is-a-commit`. The exact anchors are listed in `references/chunks/<alias>/index.json` after the first `finalize`; cite only those. The same file gives a PDF's page count (plus `pagesWithoutText`).
+- PDF: `alias#p71` or `alias#p71-73`, optionally with a display label after `|`: `mml#p77|§3.1`, `mml#p82-83|§3.4, eq. 3.25`. Page numbers are the **PDF page index** (1-based, as a PDF viewer counts them and as the `=== page 77 ===` lines of the extracted text are numbered), not the number printed on the page.
+- Markdown or web snapshot: `alias#heading-anchor`, naming a heading of that file: `notes#what-is-a-commit`. The exact anchors are listed in `.learndoc/refs/<alias>.json` after the first `finalize`; cite only those. The same file gives a PDF's page count (plus `pagesWithoutText`).
 - The alias **must** exist in `learndoc.json` `references`.
 
 Rules:
@@ -112,7 +112,7 @@ Keep each block to one idea, so a reader can select it and ask for an edit. Pref
 ## Figures
 
 - Inline `svg` **must** be one static `<svg>` element with a `viewBox`, `role="img"`, and no `<script>`, `<foreignObject>`, `style` attributes, `on*` handlers or external `href` (fragment references such as `url(#arrow)` for markers are fine; keep such ids unique within the lesson).
-- Allowed elements: `svg, g, defs, marker, line, rect, circle, ellipse, path, polygon, polyline, text, tspan, title, clipPath`. Allowed attributes: geometry (`x, y, x1, y1, x2, y2, cx, cy, r, rx, ry, width, height, d, points, transform`), `fill, stroke, stroke-width, stroke-dasharray, opacity, text-anchor, dominant-baseline, font-size, font-weight, marker-start, marker-end, clip-path, class`, plus `viewBox, role, aria-label` on `svg`, marker attributes on `marker`, and `id` on `marker` and `clipPath`. Use `opacity`, not `stroke-opacity` or `fill-opacity`.
+- Allowed elements: `svg, g, defs, marker, line, rect, circle, ellipse, path, polygon, polyline, text, tspan, title, clipPath`. Allowed attributes: geometry (`x, y, x1, y1, x2, y2, cx, cy, r, rx, ry, width, height, d, points, transform, dx, dy`), `fill, stroke, stroke-width, stroke-dasharray, stroke-linecap, stroke-linejoin, opacity, text-anchor, dominant-baseline, baseline-shift, font-size, font-weight, marker-start, marker-end, clip-path, class`, plus `viewBox, role, aria-label` on `svg`, marker attributes (including `markerUnits`) on `marker`, and `id` on `marker` and `clipPath`. Use `opacity`, not `stroke-opacity` or `fill-opacity`.
 - Color through these classes, which follow the page theme: `c1`…`c6` (stroke and fill in palette color), `fill-soft` (light fill), `stroke-only` (no fill), `axis`, `grid`, `muted` (secondary text). Avoid hard-coded colors so the figure works in dark mode.
 - `alt` describes what the figure shows; `caption` explains what to notice and cites its basis in words (for example, "After MML Fig. 3.3").
 
