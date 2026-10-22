@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { preferredPort } from '../lib/export.mjs';
 import { SKILL_ROOT, STATE_DIR, findProjectRoot } from '../lib/project.mjs';
 import { startServer } from './server.mjs';
 
@@ -95,10 +96,23 @@ function preflight() {
   return null;
 }
 
+// Without --port the server takes the project's preferred port (the one standalone pages link to),
+// or any free port when that one is taken.
+async function listenOn(root, port) {
+  const options = { root, exportPages: true };
+  if (port) return startServer({ ...options, port });
+  try {
+    return await startServer({ ...options, port: preferredPort(root) });
+  } catch (error) {
+    if (error.code !== 'EADDRINUSE' && error.code !== 'EACCES') throw error;
+    return startServer({ ...options, port: 0 });
+  }
+}
+
 // The token only goes to server.json (0600), never to stdout, which is server.log when detached.
 async function runForeground(root, opts) {
   const { json } = statePaths(root);
-  const { port, token, close } = await startServer({ root, port: opts.port });
+  const { port, token, close } = await listenOn(root, opts.port);
   const info = { pid: process.pid, port, token, startedAt: new Date().toISOString(), projectRoot: root };
   fs.writeFileSync(json, JSON.stringify(info), { mode: 0o600 });
   console.log(JSON.stringify({ ok: true, pid: process.pid, port, stateFile: json }));

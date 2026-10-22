@@ -1,13 +1,21 @@
 // Edit server: node:http on 127.0.0.1, token auth, pages, static files and the edit API.
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
+import path from 'node:path';
+import { exportSite, launcherName } from '../lib/export.mjs';
 import { renderIndexPage, renderLessonPage } from '../lib/page.mjs';
-import { bootstrapProject } from '../lib/project.mjs';
+import { bootstrapProject, CONFIG_FILE } from '../lib/project.mjs';
+import { ensureChunks } from '../lib/refs.mjs';
 import { createStaticHandler } from '../lib/static-server.mjs';
+import { escapeHtml } from '../shared/html.mjs';
+import { localized } from '../shared/render.mjs';
 import { DEFAULT_MODEL, HttpError, Store } from './store.mjs';
 
-const COOKIE = 'ld_t';
+// Browsers share cookies across ports of one host, so each server names its cookie by its port:
+// otherwise opening one course logs every other running course out.
+const cookieName = (port) => `ld_t_${port}`;
 const BODY_LIMIT = 1024 * 1024;
 const SLUG = '[a-z0-9][a-z0-9-]{0,63}';
 
@@ -34,8 +42,8 @@ function sendJson(res, status, body) {
 
 const sendError = (res, status, code, message) => sendJson(res, status, { error: { code, message } });
 
-function sendHtml(res, html, headers = {}) {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
+function sendHtml(res, html, headers = {}, status = 200) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
   res.end(html);
 }
 
@@ -57,11 +65,56 @@ async function readBody(req) {
   throw new HttpError(400, 'bad_request', 'body must be a JSON object');
 }
 
-// -> { server, store, port, token, close() }
-export async function startServer({ root, port = 0, token = crypto.randomBytes(32).toString('hex') }) {
+const NO_SESSION = {
+  vi: {
+    title: 'Cần mở lại chế độ sửa',
+    body: (launcher) => `Trình duyệt chưa có phiên sửa của server này (server vừa khởi động lại, hoặc trang được mở không qua link của learndoc). Double-click file <strong>${escapeHtml(launcher)}</strong> trong thư mục khoá học để mở lại.`,
+  },
+  en: {
+    title: 'Open editing again',
+    body: (launcher) => `This browser has no editing session for this server (it restarted, or the page was not opened from a learndoc link). Double-click <strong>${escapeHtml(launcher)}</strong> in the course folder to open it again.`,
+  },
+};
+
+// Shown instead of a bare 403 when a page is opened without a valid session, e.g. from a standalone page.
+function noSessionPage(language) {
+  const text = localized(NO_SESSION, language);
+  return `<!doctype html>
+<html lang="${escapeHtml(language ?? 'en')}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(text.title)}</title>
+<link rel="icon" href="data:,"><link rel="stylesheet" href="/static/runtime/style.css"></head>
+<body class="ld-page"><main class="ld-index"><h1>${escapeHtml(text.title)}</h1><p>${text.body(launcherName(language))}</p></main></body>
+</html>
+`;
+}
+
+// Edits validate sources against the reference index, so a project last finalized by an earlier
+// version (or whose references changed since) is indexed before the first request.
+async function indexReferences(root) {
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(root, CONFIG_FILE), 'utf8'));
+    await ensureChunks(root, config);
+  } catch (error) {
+    console.error('learndoc: indexing references failed', error);
+  }
+}
+
+// -> { server, store, port, token, close() }. `exportPages` refreshes the standalone pages
+// (lib/export.mjs) at start and after every accept or restore.
+export async function startServer({ root, port = 0, token = crypto.randomBytes(32).toString('hex'), exportPages = false }) {
   bootstrapProject(root);
+  await indexReferences(root);
   const store = new Store({ root });
   store.load();
+  const refreshExport = (result) => {
+    if (!exportPages) return result;
+    try {
+      exportSite(root);
+    } catch (error) {
+      console.error('learndoc: export failed', error);
+    }
+    return result;
+  };
   const serveStatic = createStaticHandler({ projectRoot: root });
   let listeningPort = null;
 
@@ -76,13 +129,13 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     ['GET', '/api/changesets/([a-z0-9-]+)', ({ id }) => store.view(id)],
     ['POST', '/api/changesets/([a-z0-9-]+)/confirm', ({ id }) => [202, { changesetId: store.confirm(id) }]],
     ['POST', '/api/changesets/([a-z0-9-]+)/refine', ({ id, body }) => [202, { changesetId: store.refine(id, body) }]],
-    ['POST', '/api/changesets/([a-z0-9-]+)/accept', ({ id, body }) => store.accept(id, body)],
+    ['POST', '/api/changesets/([a-z0-9-]+)/accept', async ({ id, body }) => refreshExport(await store.accept(id, body))],
     ['DELETE', '/api/changesets/([a-z0-9-]+)', ({ id }) => {
       store.cancel(id);
       return { ok: true };
     }],
     ['GET', `/api/lessons/(${SLUG})/history`, ({ id }) => store.history(id)],
-    ['POST', `/api/lessons/(${SLUG})/revert`, ({ id, body }) => store.restoreBefore(id, body.commit)],
+    ['POST', `/api/lessons/(${SLUG})/revert`, ({ id, body }) => refreshExport(store.restoreBefore(id, body.commit))],
     ['GET', `/api/lessons/(${SLUG})/notes`, ({ id }) => {
       store.lesson(id);
       return store.notes(id);
@@ -99,7 +152,7 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     if (url.pathname === '/api/health' || isStatic(req, url)) return { ok: true };
     const isPage = url.pathname === '/' || url.pathname.startsWith('/lessons/');
     const viaQuery = isPage && req.method === 'GET' && sameSecret(url.searchParams.get('t'), token);
-    if (!viaQuery && !sameSecret(cookieValue(req, COOKIE), token)) return { ok: false };
+    if (!viaQuery && !sameSecret(cookieValue(req, cookieName(listeningPort)), token)) return { ok: false, page: isPage && req.method === 'GET' };
     if (url.pathname.startsWith('/api/') && req.method !== 'GET' && req.method !== 'HEAD') {
       if (!sameSecret(req.headers['x-learndoc-token'], token)) return { ok: false };
       if (req.headers.origin !== `http://127.0.0.1:${listeningPort}`) return { ok: false };
@@ -110,6 +163,7 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
   const handle = async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const auth = authorized(req, url);
+    if (!auth.ok && auth.page) return sendHtml(res, noSessionPage(store.config().language), {}, 403);
     if (!auth.ok) return sendError(res, 403, 'forbidden', 'forbidden');
     if (serveStatic(req, res)) return;
     const pathMatches = routes.filter((r) => r.re.test(url.pathname));
@@ -119,7 +173,9 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     const [, id] = route.re.exec(url.pathname);
     const body = req.method === 'POST' ? await readBody(req) : undefined;
     const result = await route.handler({ id, body });
-    const cookie = auth.setCookie ? { 'Set-Cookie': `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/` } : {};
+    // Lax, not Strict: the Edit link of a standalone (file://) page is a cross-site navigation. Writes
+    // still need the token header and this origin, and cross-site subresource requests get no cookie.
+    const cookie = auth.setCookie ? { 'Set-Cookie': `${cookieName(listeningPort)}=${token}; HttpOnly; SameSite=Lax; Path=/` } : {};
     if (result?.html !== undefined) return sendHtml(res, result.html, cookie);
     const [status, payload] = Array.isArray(result) && typeof result[0] === 'number' ? result : [200, result];
     sendJson(res, status, payload);
@@ -138,6 +194,7 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     server.listen(port, '127.0.0.1', resolve);
   });
   listeningPort = server.address().port;
+  refreshExport();
 
   const close = () => {
     store.cancelAll();

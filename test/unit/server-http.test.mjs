@@ -1,5 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { git, makeProject, request, scenario, waitFor } from '../fake-claude/harness.mjs';
 import { startServer } from '../../server/server.mjs';
 
@@ -15,7 +17,7 @@ const editBody = {
 before(async () => {
   root = makeProject();
   scenario([{ structured_output: { summary: 'Say norm.', changes: [{ op: 'replace', blockId: 'b-prose1', role: 'primary', block: { type: 'prose', html: '<p>A vector $\\mathbf{x}$ has a <strong>norm</strong> and a direction.</p>', sources: ['notes#basics'] }, reason: 'asked' }] } }]);
-  srv = await startServer({ root });
+  srv = await startServer({ root, exportPages: true });
 });
 after(() => srv.close());
 
@@ -24,17 +26,25 @@ test('health and static files need no cookie; everything else does', async () =>
   assert.equal(health.status, 200);
   assert.deepEqual(health.json, { ok: true, pid: process.pid, projectRoot: root });
   assert.equal((await request(srv.port, { path: '/static/runtime/lesson.js' })).status, 200);
-  for (const p of ['/', '/lessons/01-intro', '/api/lessons/01-intro', '/project/widgets/x.js']) {
+  for (const p of ['/api/lessons/01-intro', '/project/widgets/x.js']) {
     const res = await request(srv.port, { path: p });
     assert.equal(res.status, 403, p);
     assert.deepEqual(res.json, { error: { code: 'forbidden', message: 'forbidden' } });
+  }
+  // Pages explain how to get a session back (a standalone page links here without the token).
+  for (const p of ['/', '/lessons/01-intro']) {
+    const res = await request(srv.port, { path: p });
+    assert.equal(res.status, 403, p);
+    assert.match(res.headers['content-type'], /^text\/html/);
+    assert.match(res.body, /double-click/i);
+    assert.doesNotMatch(res.body, new RegExp(srv.token));
   }
   assert.equal((await request(srv.port, { path: `/api/lessons/01-intro?t=${srv.token}` })).status, 403, 'the query token only works on pages');
 });
 
 test('a token of the same length but with multibyte characters is a 403, not a 500', async () => {
   const forged = `é${srv.token.slice(1)}`;
-  assert.equal((await request(srv.port, { path: '/', headers: { cookie: `ld_t=${forged}` } })).status, 403);
+  assert.equal((await request(srv.port, { path: '/', headers: { cookie: `ld_t_${srv.port}=${forged}` } })).status, 403);
   assert.equal((await request(srv.port, { path: `/?t=${encodeURIComponent(forged)}` })).status, 403);
 });
 
@@ -52,13 +62,26 @@ test('page load with ?t= sets the cookie; the page carries the token meta', asyn
   const res = await request(srv.port, { path: `/lessons/01-intro?t=${srv.token}` });
   assert.equal(res.status, 200);
   const setCookie = res.headers['set-cookie'][0];
-  assert.match(setCookie, new RegExp(`^ld_t=${srv.token}; HttpOnly; SameSite=Strict; Path=/$`));
+  assert.match(setCookie, new RegExp(`^ld_t_${srv.port}=${srv.token}; HttpOnly; SameSite=Lax; Path=/$`));
   cookie = setCookie.split(';')[0];
   assert.match(res.body, new RegExp(`<meta name="learndoc-token" content="${srv.token}"`));
   assert.match(res.body, /\/static\/runtime\/editor\.js/);
   assert.equal((await request(srv.port, { path: '/', headers: { cookie } })).status, 200);
   assert.equal((await request(srv.port, { path: '/lessons/missing', headers: { cookie } })).status, 404);
-  assert.equal((await request(srv.port, { path: '/', headers: { cookie: 'ld_t=wrong' } })).status, 403);
+  assert.equal((await request(srv.port, { path: '/', headers: { cookie: `ld_t_${srv.port}=wrong` } })).status, 403);
+});
+
+test('two running courses keep separate sessions (cookies are shared across ports)', async () => {
+  const other = await startServer({ root: makeProject() });
+  try {
+    const otherCookie = (await request(other.port, { path: `/?t=${other.token}` })).headers['set-cookie'][0].split(';')[0];
+    // The browser sends both cookies to both servers: neither may shadow the other.
+    const both = `${cookie}; ${otherCookie}`;
+    assert.equal((await request(srv.port, { path: '/', headers: { cookie: both } })).status, 200);
+    assert.equal((await request(other.port, { path: '/', headers: { cookie: both } })).status, 200);
+  } finally {
+    await other.close();
+  }
 });
 
 test('API writes need cookie, token header and Origin', async () => {
@@ -90,6 +113,8 @@ test('API writes need cookie, token header and Origin', async () => {
   const accepted = await request(srv.port, { method: 'POST', path: `/api/changesets/${changesetId}/accept`, headers: good, body: {} });
   assert.equal(accepted.status, 200, accepted.body);
   assert.match(accepted.json.lesson.blocks[1].html, /norm/);
+  const standalone = () => fs.readFileSync(path.join(root, 'html', '01-intro.html'), 'utf8');
+  assert.match(standalone(), /<strong>norm<\/strong>/, 'accept refreshes the standalone page');
   const again = await request(srv.port, { method: 'DELETE', path: `/api/changesets/${changesetId}`, headers: good });
   assert.deepEqual([again.status, again.json], [200, { ok: true }], 'DELETE on a terminal changeset is ok');
   assert.equal((await request(srv.port, { path: '/api/lessons/01-intro', headers: { cookie } })).json.openChangeset, null);
@@ -100,6 +125,7 @@ test('API writes need cookie, token header and Origin', async () => {
   const reverted = await request(srv.port, { method: 'POST', path: '/api/lessons/01-intro/revert', headers: good, body: { commit: history[0].commit } });
   assert.equal(reverted.status, 200, reverted.body);
   assert.match(reverted.json.lesson.blocks[1].html, /<strong>length<\/strong>/);
+  assert.match(standalone(), /<strong>length<\/strong>/, 'restore refreshes the standalone page');
   assert.equal(git(root, 'log', '-1', '--format=%s').trim(), `learndoc: restore before ${history[0].commit.slice(0, 7)}`);
   assert.equal((await request(srv.port, { method: 'POST', path: '/api/lessons/01-intro/revert', headers: good, body: { commit: 'HEAD' } })).status, 400);
 });
@@ -111,4 +137,21 @@ test('errors are JSON', async () => {
   const missing = await request(srv.port, { path: '/api/changesets/cs-none', headers: { cookie } });
   assert.deepEqual([missing.status, missing.json.error.code], [404, 'not_found']);
   assert.equal((await request(srv.port, { path: '/api/lessons/01-intro/notes', headers: { cookie } })).body, '[]');
+});
+
+test('server start indexes the references and removes what earlier versions generated', async () => {
+  const project = makeProject();
+  const legacy = path.join(project, 'references', 'chunks', 'notes');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(path.join(legacy, 'index.json'), '{}');
+  fs.mkdirSync(path.join(project, '.learndoc', 'build'), { recursive: true });
+  fs.rmSync(path.join(project, '.learndoc', 'refs'), { recursive: true, force: true });
+  const other = await startServer({ root: project });
+  try {
+    assert.ok(fs.readdirSync(path.join(project, '.learndoc', 'refs')).length > 0, 'references indexed');
+    assert.ok(!fs.existsSync(path.join(project, 'references', 'chunks')));
+    assert.ok(!fs.existsSync(path.join(project, '.learndoc', 'build')));
+  } finally {
+    await other.close();
+  }
 });

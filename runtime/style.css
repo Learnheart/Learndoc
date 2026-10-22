@@ -151,6 +151,42 @@ button { font: inherit; color: inherit; }
 }
 .ld-theme-toggle:hover { border-color: var(--accent); }
 
+/* Standalone (exported) pages: the Edit link and the help shown when the server is not running. */
+.ld-edit-open {
+  flex: none;
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  white-space: nowrap;
+}
+.ld-edit-open:hover { border-color: var(--accent); text-decoration: none; }
+.ld-edit-open + .ld-theme-toggle { margin-left: 0; }
+.ld-edit-help {
+  position: fixed;
+  top: calc(var(--topbar-h) + 8px);
+  right: 16px;
+  z-index: 50;
+  width: min(380px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+}
+.ld-edit-help p { margin: 6px 0 12px; color: var(--muted); }
+.ld-edit-help-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ld-edit-close {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  cursor: pointer;
+}
+
 /* ---------- layout & TOC ---------- */
 
 .ld-layout {

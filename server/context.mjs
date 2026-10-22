@@ -1,12 +1,10 @@
 // Builds the prompt (context pack) for one `claude -p` edit call. Section names match
 // references/edit-contract.md.
 
-import fs from 'node:fs';
-import path from 'node:path';
 import { markFocus } from '../delta/selection.mjs';
 import { resolveBoxTypes } from '../shared/render.mjs';
 import { importWidget, otherLessons, resolveWidget } from '../lib/project.mjs';
-import { chunksDir, pageFileName } from '../lib/refs.mjs';
+import { sourceExcerpt } from '../lib/refs.mjs';
 import { parseSourceRef } from '../lib/validate.mjs';
 
 const EXCERPT_BUDGET = 20_000;
@@ -26,7 +24,7 @@ export async function buildContextPack(opts) {
     ['NOTATION', JSON.stringify(lesson.notation ?? {}, null, 1)],
     ['ANCHORS', anchorsText(lesson)],
     ['INBOUND', inboundText(root, lesson)],
-    ['REFERENCES', referencesText(root, lesson, focus)],
+    ['REFERENCES', referencesText(root, config, lesson, focus)],
     ['CONFIG', JSON.stringify(await configInfo(root, config, lesson, opts.maxRelated))],
   ];
   if (opts.previousSummaries?.length) sections.push(['PREVIOUS ROUNDS', previousText(opts.previousSummaries)]);
@@ -103,13 +101,14 @@ function inboundText(root, lesson) {
 
 // ---------- references ----------
 
-function referencesText(root, lesson, focus) {
+function referencesText(root, config, lesson, focus) {
   const focusIds = new Set(focus.focusBlockIds);
   const refs = [...new Set(lesson.blocks.filter((b) => focusIds.has(b.id)).flatMap((b) => b.sources ?? []))];
   let budget = EXCERPT_BUDGET;
   const parts = [];
   for (const ref of refs) {
-    const excerpt = readExcerpt(root, ref);
+    const parsed = parseSourceRef(ref);
+    const excerpt = parsed && sourceExcerpt(root, config, parsed, { maxPages: MAX_PAGES_PER_REF });
     if (!excerpt) {
       parts.push(`--- ${ref} ---\n(no excerpt available)`);
       continue;
@@ -123,17 +122,6 @@ function referencesText(root, lesson, focus) {
     parts.push(`--- ${ref} ---\n${text.trim()}`);
   }
   return parts.join('\n\n');
-}
-
-function readExcerpt(root, ref) {
-  const parsed = parseSourceRef(ref);
-  if (!parsed) return null;
-  const dir = chunksDir(root, parsed.alias);
-  const files = parsed.anchor
-    ? [`${parsed.anchor}.md`]
-    : Array.from({ length: Math.min(parsed.pageEnd - parsed.page + 1, MAX_PAGES_PER_REF) }, (_, i) => pageFileName(parsed.page + i));
-  const texts = files.map((f) => path.join(dir, f)).filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, 'utf8'));
-  return texts.length ? texts.join('\n') : null;
 }
 
 // ---------- config ----------

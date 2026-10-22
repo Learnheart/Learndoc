@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { findChrome } from '../../lib/chrome.mjs';
-import { runFinalize, UsageError } from '../../lib/finalize.mjs';
+import { runFinalize, sha256, UsageError } from '../../lib/finalize.mjs';
 import { formatJson } from '../../lib/project.mjs';
 import { codes, copyFixture, GIT_ENV, readJson, SKILL, writeJson } from './helpers.mjs';
 
@@ -18,19 +18,30 @@ Object.assign(process.env, GIT_ENV);
 
 const git = (root, ...args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' });
 
-test('lesson finalize: bootstrap, all gates, compact receipt, built page', async (t) => {
+test('lesson finalize: bootstrap, all gates, compact receipt, standalone page', async (t) => {
   const root = copyFixture(t);
+  const legacy = [path.join(root, '.learndoc', 'build', 'old.html'), path.join(root, 'references', 'chunks', 'notes', 'index.json')];
+  for (const file of legacy) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{}');
+  }
+  fs.mkdirSync(path.join(root, '.learndoc'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.learndoc', '.gitignore'), 'server.json\nserver.log\nbuild/\nchangesets/\nimport/\n');
   const { exitCode, receipt } = await runFinalize({ file: path.join(root, 'lessons', 'intro.json') });
   assert.deepEqual(Object.keys(receipt), ['schemaVersion', 'ok', 'command', 'status', 'target', 'gates', 'diagnostics', 'diagnosticSummary', 'artifact', 'commit', 'durationMs']);
   assert.equal(receipt.target.kind, 'lesson');
   assert.match(receipt.target.sha256, /^[0-9a-f]{64}$/);
   assert.deepEqual([receipt.gates.validate, receipt.gates.render, receipt.gates.check], ['pass', 'pass', 'pass']);
-  assert.equal(fs.readFileSync(path.join(root, '.learndoc', '.gitignore'), 'utf8'), 'server.json\nserver.log\nbuild/\nchangesets/\n');
+  assert.equal(fs.readFileSync(path.join(root, '.learndoc', '.gitignore'), 'utf8'), 'server.json\nserver.log\nbuild/\nchangesets/\nimport/\nrefs/\n',
+    'an existing .gitignore gets the missing entries appended');
   assert.ok(fs.existsSync(path.join(root, '.git')), 'git init outside a work tree');
-  assert.ok(fs.existsSync(path.join(root, 'references', 'chunks', 'notes', 'index.json')));
+  assert.ok(fs.existsSync(path.join(root, '.learndoc', 'refs', 'notes.json')));
+  for (const file of legacy) assert.ok(!fs.existsSync(file), `${path.relative(root, file)} from an earlier version is removed`);
+  assert.ok(!fs.existsSync(path.join(root, 'references', 'chunks')), 'the emptied legacy chunks folder goes too');
+  assert.equal(receipt.artifact.path, path.join(root, 'html', 'intro.html'), 'the standalone page is the only rendered copy');
   const page = fs.readFileSync(receipt.artifact.path, 'utf8');
-  assert.equal(receipt.artifact.path, path.join(root, '.learndoc', 'build', 'intro.html'));
-  assert.doesNotMatch(page, /editor\.js|learndoc-token/, 'finalize builds the non-editable page');
+  assert.equal(receipt.artifact.sha256, sha256(page));
+  assert.doesNotMatch(page, /<meta name="learndoc-token"|<script[^>]*editor\.js/, 'finalize builds the non-editable page');
   if (browserSkip) {
     t.diagnostic(`browser-check assertion skipped: ${browserSkip}`);
     return;
@@ -115,6 +126,18 @@ test('a commit failure is a warning: the lesson still passes with commit null', 
   assert.notEqual(git(root, 'rev-parse', '--verify', 'HEAD').status, 0, 'the hook blocked the commit');
 });
 
+test('commit: false keeps the canonical rewrite but leaves committing to the caller', async (t) => {
+  const root = copyFixture(t);
+  const file = path.join(root, 'lessons', 'intro.json');
+  const lesson = readJson(file);
+  fs.writeFileSync(file, JSON.stringify(lesson));
+  const { receipt } = await runFinalize({ file, env: NO_CHROME, commit: false });
+  assert.equal(receipt.status, 'skipped');
+  assert.equal(receipt.commit, null);
+  assert.equal(fs.readFileSync(file, 'utf8'), formatJson(lesson));
+  assert.notEqual(git(root, 'rev-parse', '--verify', 'HEAD').status, 0);
+});
+
 test('a failing lesson commits nothing', async (t) => {
   const root = copyFixture(t);
   const file = path.join(root, 'lessons', 'intro.json');
@@ -134,7 +157,7 @@ test('finalize learndoc.json alone chunks references (to learn anchors before wr
   const { exitCode, receipt } = await runFinalize({ file: path.join(root, 'learndoc.json') });
   assert.equal(exitCode, 0);
   assert.equal(Object.hasOwn(receipt, 'commit'), false, 'only lesson targets commit');
-  const index = readJson(path.join(root, 'references', 'chunks', 'notes', 'index.json'));
+  const index = readJson(path.join(root, '.learndoc', 'refs', 'notes.json'));
   assert.deepEqual(index.anchors.map((entry) => entry.anchor), ['preamble', 'vectors', 'inner-product', 'norms', 'duong-thang-mat-phang']);
   assert.notEqual(git(root, 'rev-parse', '--verify', 'HEAD').status, 0);
 });

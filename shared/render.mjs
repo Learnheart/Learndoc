@@ -136,13 +136,16 @@ export function mathSpan(latex, display, n) {
   return `<span class="math" data-math="${n}" data-display="${display ? 1 : 0}" data-latex="${escapeAttr(latex)}">${escapeHtml(latex)}</span>`;
 }
 
+// linkBase is a prefix ('/lessons/') or a function of the link target '<id>[#anchor]'.
+const lessonHref = (linkBase, target) => (typeof linkBase === 'function' ? linkBase(target) : linkBase + target);
+
 function renderTag(token, src, linkBase) {
   const raw = src.slice(token.start, token.end);
   if (token.type !== 'open' || token.name.toLowerCase() !== 'a' || !linkBase) return raw;
   const href = token.attrs.find((attr) => attr.name.toLowerCase() === 'href')?.value;
   if (!href?.startsWith('lesson:')) return raw;
   const attrs = token.attrs.map((attr) => (attr.name.toLowerCase() === 'href'
-    ? ` href="${escapeAttr(linkBase + href.slice('lesson:'.length))}"`
+    ? ` href="${escapeAttr(lessonHref(linkBase, href.slice('lesson:'.length)))}"`
     : ` ${attr.name}${attr.value == null ? '' : `="${escapeAttr(attr.value)}"`}`));
   return `<a${attrs.join('')}>`;
 }
@@ -179,6 +182,8 @@ function sectionOpen(block, extraClass = '', style = '') {
   return `<section class="${classes}" data-block-id="${escapeAttr(block.id)}" data-type="${block.type}"${style}>`;
 }
 
+const figcaption = (block) => `<figcaption data-field="caption">${wrapMath(block.caption, 'plain')}</figcaption>`;
+
 const BLOCK_RENDERERS = {
   heading(block) {
     const tag = block.level === 3 ? 'h3' : 'h2';
@@ -204,11 +209,10 @@ const BLOCK_RENDERERS = {
       : '';
     return `<pre><code class="language-${language}" data-field="code">${escapeHtml(block.code)}</code></pre>${caption}`;
   },
-  figure(block) {
-    const media = block.svg != null
-      ? block.svg
-      : `<img src="/project/${escapeAttr(block.src)}" alt="${escapeAttr(block.alt)}">`;
-    return `<figure>${media}<figcaption data-field="caption">${wrapMath(block.caption, 'plain')}</figcaption></figure>`;
+  figure(block, ctx) {
+    if (block.svg != null) return `<figure>${block.svg}${figcaption(block)}</figure>`;
+    const src = ctx.assetUrl ? ctx.assetUrl(block.src) : `/project/${block.src}`;
+    return `<figure><img src="${escapeAttr(src)}" alt="${escapeAttr(block.alt)}">${figcaption(block)}</figure>`;
   },
   widget(block) {
     return `<div class="ld-widget" data-widget="${escapeAttr(block.widget)}" data-props="${escapeAttr(JSON.stringify(block.props))}"></div>`;
@@ -222,7 +226,8 @@ const BLOCK_RENDERERS = {
   },
 };
 
-// ctx = { boxTypes, lessonId, linkBase: '/lessons/', language? } (language localizes the quiz answer label).
+// ctx = { boxTypes, lessonId, linkBase: '/lessons/', language?, assetUrl? } (language localizes the quiz
+// answer label; assetUrl maps a figure's project-relative src, default /project/<src>).
 export function renderBlock(block, ctx = {}) {
   const render = BLOCK_RENDERERS[block.type];
   if (!render) throw new Error(`renderBlock: unknown block type "${block.type}"`);

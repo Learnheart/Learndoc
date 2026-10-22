@@ -84,6 +84,16 @@ const git = (cwd, ...args) => {
   return (r.stdout || r.stderr).trim();
 };
 
+// Files changed by `rev`, relative to the project root even when the project sits inside a larger
+// repo. Files outside the project keep their repo-relative path, so they never match a project path.
+function commitFiles(project, rev) {
+  const prefix = git(project, 'rev-parse', '--show-prefix');
+  return git(project, 'show', '--name-only', '--format=', rev)
+    .split('\n')
+    .filter(Boolean)
+    .map((f) => (prefix && f.startsWith(prefix) ? f.slice(prefix.length) : f));
+}
+
 async function health(port) {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2000) });
@@ -415,7 +425,8 @@ async function stepA(ctx) {
     await window.learndoc.ready;
     const self = await window.learndoc.selfTest();
     const math = [...document.querySelectorAll('span.math')];
-    const widgets = [...document.querySelectorAll('.ld-widget')];
+    // Mount points only: the widget block's <section> is also .ld-widget (see runtime/lesson.js).
+    const widgets = [...document.querySelectorAll('.ld-widget[data-widget]')];
     return {
       title: document.querySelector('main.ld-lesson h1')?.textContent,
       blocks: document.querySelectorAll('main.ld-lesson > section.ld-block').length,
@@ -496,7 +507,7 @@ async function stepB(ctx) {
   check('b', 'lesson file changed on disk', shaAfter !== shaBefore, { shaBefore, shaAfter });
   const head = git(project, 'rev-parse', 'HEAD');
   const stat = git(project, 'log', '-1', '--stat', '--format=%H %s');
-  const files = git(project, 'show', '--name-only', '--format=', 'HEAD').split('\n').filter(Boolean);
+  const files = commitFiles(project, 'HEAD');
   ctx.bCommit = head;
   const subject = git(project, 'log', '-1', '--format=%s');
   check('b', 'commit message has no block ids', !BLOCK_ID.test(subject), { subject });
@@ -631,6 +642,8 @@ async function stepE(ctx) {
   }
   const head = git(project, 'rev-parse', 'HEAD');
   check('e', 'new restore commit', head !== headBefore, { log: git(project, 'log', '-3', '--format=%h %s') });
+  const files = head !== headBefore ? commitFiles(project, 'HEAD') : [];
+  check('e', 'restore commit contains only the lesson file', files.length === 1 && files[0] === `lessons/${ctx.lessonId}.json`, { files });
 }
 
 async function stepF(ctx) {
