@@ -122,6 +122,15 @@ test('API writes need cookie, token header and Origin', async () => {
   const history = (await request(srv.port, { path: '/api/lessons/01-intro/history', headers: { cookie } })).json;
   assert.deepEqual(history.map((h) => [h.summary, h.restorable]), [['learndoc: Say norm.', true], ['init', false]]);
 
+  const saved = await request(srv.port, { path: `/api/lessons/01-intro/history/${history[0].commit}`, headers: { cookie } });
+  assert.equal(saved.status, 200, saved.body);
+  assert.deepEqual(saved.json.changes.map((c) => [c.op, c.blockId]), [['replace', 'b-prose1']]);
+  assert.match(saved.json.before.blocks[1].html, /<strong>length<\/strong>/);
+  assert.match(saved.json.preview.blocks[1].html, /<strong>norm<\/strong>/);
+  const first = await request(srv.port, { path: `/api/lessons/01-intro/history/${history[1].commit}`, headers: { cookie } });
+  assert.deepEqual([first.json.restorable, first.json.before.blocks, first.json.changes.every((c) => c.op === 'insert')], [false, [], true]);
+  assert.equal((await request(srv.port, { path: `/api/lessons/01-intro/history/${'0'.repeat(40)}`, headers: { cookie } })).status, 404);
+
   const reverted = await request(srv.port, { method: 'POST', path: '/api/lessons/01-intro/revert', headers: good, body: { commit: history[0].commit } });
   assert.equal(reverted.status, 200, reverted.body);
   assert.match(reverted.json.lesson.blocks[1].html, /<strong>length<\/strong>/);
@@ -137,6 +146,9 @@ test('errors are JSON', async () => {
   const missing = await request(srv.port, { path: '/api/changesets/cs-none', headers: { cookie } });
   assert.deepEqual([missing.status, missing.json.error.code], [404, 'not_found']);
   assert.equal((await request(srv.port, { path: '/api/lessons/01-intro/notes', headers: { cookie } })).body, '[]');
+  const gone = await request(srv.port, { method: 'DELETE', path: '/api/lessons/01-intro/notes/cs-none', headers: writeHeaders() });
+  assert.deepEqual([gone.status, gone.json.error.code], [404, 'not_found']);
+  assert.equal((await request(srv.port, { method: 'DELETE', path: '/api/lessons/01-intro/notes/cs-none', headers: { cookie } })).status, 403);
 });
 
 test('server start indexes the references and removes what earlier versions generated', async () => {

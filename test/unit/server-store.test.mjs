@@ -134,6 +134,11 @@ test('ask stores a note, ends as answered, leaves the lesson alone and does not 
   store.cancel(id);
   assert.equal(store.view(id).status, 'answered', 'DELETE on a terminal changeset changes nothing');
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.learndoc/notes', `${LESSON}.json`), 'utf8')).length, 1, 'note is kept');
+  assert.deepEqual(notes[0].ranges, [{ blockId: 'b-box1', field: 'html', quote: { exact: 'never negative', prefix: '', suffix: '' } }], 'the note keeps its passage');
+
+  assert.throws(() => store.deleteNote(LESSON, 'cs-other'), { code: 'not_found' });
+  assert.deepEqual(store.deleteNote(LESSON, id), { ok: true });
+  assert.deepEqual(store.notes(LESSON), []);
 });
 
 test('an ask answer outside the HTML whitelist is retried, then failed', async () => {

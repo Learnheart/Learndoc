@@ -279,8 +279,10 @@ Routes:
 | POST | `/api/changesets/:id/accept` | `{ excludeGroups?: [] }` | `{ lesson, rev, commit }` |
 | DELETE | `/api/changesets/:id` | – | `{ ok }` (kills running claude) |
 | GET | `/api/lessons/:id/history` | – | `[{ commit, date, summary, restorable }]` (`restorable` is false for the commit that added the lesson file) |
+| GET | `/api/lessons/:id/history/:commit` | – | `{ commit, date, summary, restorable, round, before, preview, changes, counts, warnings }`: the lesson before and after one saved commit and its net block changes, shaped like a changeset view (`before` has no blocks for the commit that added the file); unknown commit → 404 |
 | POST | `/api/lessons/:id/revert` | `{ commit }` | `{ lesson, rev, commit }` (restore to before `<commit>`; the commit that added the lesson file → 409 `history/no-parent`) |
-| GET | `/api/lessons/:id/notes` | – | `[{ id, blockId, question, answer, sources, createdAt }]` |
+| GET | `/api/lessons/:id/notes` | – | `[{ id, blockId, ranges, question, answer, sources, createdAt }]` (`ranges`: the asked passages as `{ blockId, field, quote }` or `{ blockId, whole: true }`; missing on older notes) |
+| DELETE | `/api/lessons/:id/notes/:noteId` | – | `{ ok: true }`; unknown note → 404 |
 
 Changeset view:
 ```json

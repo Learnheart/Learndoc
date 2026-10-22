@@ -34,7 +34,7 @@ async function boot() {
     else (topbar ?? document.body).append(...buttons);
   };
 
-  const notesButton = topButton('', { hidden: true, title: t('notesToggle') });
+  const notesButton = topButton('', { hidden: true, title: t('notesOpenAll') });
   addToTopbar(notesButton);
   const notes = createNotes({ api, lessonId, main, sectionOf, t, button: notesButton });
   notes.load().catch((err) => console.error('learndoc editor: notes failed to load', err));
@@ -92,7 +92,7 @@ async function boot() {
     api, t, lessonId, lesson: initial.lesson, main, body, bar: createBar(), notes, selection, toolbar, prompt, openPrompt,
   });
 
-  const history = createHistory({ api, lessonId, t, onRevert: session.revert });
+  const history = createHistory({ api, lessonId, t, session });
   addToTopbar(topButton(t('history'), { onclick: () => history.toggle() }));
 
   document.addEventListener('keydown', (e) => {

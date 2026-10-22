@@ -135,11 +135,13 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
       return { ok: true };
     }],
     ['GET', `/api/lessons/(${SLUG})/history`, ({ id }) => store.history(id)],
+    ['GET', `/api/lessons/(${SLUG})/history/([0-9a-f]{40,64})`, ({ id, sub }) => store.commitView(id, sub)],
     ['POST', `/api/lessons/(${SLUG})/revert`, ({ id, body }) => refreshExport(store.restoreBefore(id, body.commit))],
     ['GET', `/api/lessons/(${SLUG})/notes`, ({ id }) => {
       store.lesson(id);
       return store.notes(id);
     }],
+    ['DELETE', `/api/lessons/(${SLUG})/notes/([A-Za-z0-9_-]+)`, ({ id, sub }) => store.deleteNote(id, sub)],
   ].map(([method, pattern, handler]) => ({ method, re: new RegExp(`^${pattern}$`), handler }));
 
   // Static skill files are public, but only when the raw and the parsed path agree, so a
@@ -170,9 +172,9 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     const route = pathMatches.find((r) => r.method === req.method || (req.method === 'HEAD' && r.method === 'GET'));
     if (!route && pathMatches.length) return sendError(res, 405, 'method_not_allowed', 'method not allowed');
     if (!route) return sendError(res, 404, 'not_found', 'not found');
-    const [, id] = route.re.exec(url.pathname);
+    const [, id, sub] = route.re.exec(url.pathname);
     const body = req.method === 'POST' ? await readBody(req) : undefined;
-    const result = await route.handler({ id, body });
+    const result = await route.handler({ id, sub, body });
     // Lax, not Strict: the Edit link of a standalone (file://) page is a cross-site navigation. Writes
     // still need the token header and this origin, and cross-site subresource requests get no cookie.
     const cookie = auth.setCookie ? { 'Set-Cookie': `${cookieName(listeningPort)}=${token}; HttpOnly; SameSite=Lax; Path=/` } : {};

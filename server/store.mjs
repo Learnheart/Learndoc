@@ -161,6 +161,15 @@ export class Store {
     }
   }
 
+  deleteNote(lessonId, noteId) {
+    this.lesson(lessonId);
+    const notes = this.notes(lessonId);
+    const kept = notes.filter((n) => n.id !== noteId);
+    if (kept.length === notes.length) throw new HttpError(404, 'not_found', `no note ${noteId} in lesson "${lessonId}"`);
+    writeAtomic(this.notesFile(lessonId), formatJson(kept));
+    return { ok: true };
+  }
+
   notesFile(lessonId) {
     return path.join(this.root, STATE_DIR, 'notes', `${lessonId}.json`);
   }
@@ -181,6 +190,8 @@ export class Store {
       createdAt: new Date().toISOString(), maxRelated: config.edit?.maxRelated ?? DEFAULT_MAX_RELATED,
       rounds: [], request: null, focus: null, summary: '', warnings: [], usage: { costUsd: 0, durationMs: 0 },
     };
+    // An ask keeps the quoted passages so its note can mark them on the page.
+    if (mode === 'ask') rec.quotes = noteQuotes(selection);
     this.records.set(rec.id, rec);
     this.launch(rec, { mode, instruction, focus: resolveSelection(lesson, selection) });
     return rec.id;
@@ -265,6 +276,21 @@ export class Store {
     const rel = lessonRel(lessonId);
     const added = git.commitsAdding(this.root, rel);
     return git.log(this.root, rel).map((c) => ({ ...c, restorable: !added.has(c.commit) }));
+  }
+
+  // One saved change shown like a changeset preview: the lesson before and after `commit`
+  // (an empty lesson before the commit that created it) and the net block changes.
+  commitView(lessonId, commit) {
+    this.lesson(lessonId);
+    const rel = lessonRel(lessonId);
+    const entry = this.history(lessonId).find((c) => c.commit === commit);
+    if (!entry) throw new HttpError(404, 'not_found', 'commit must be a full hash from this lesson\'s history');
+    const after = JSON.parse(git.showFile(this.root, rel, commit));
+    const before = entry.restorable ? JSON.parse(git.showFile(this.root, rel, `${commit}^`)) : { ...after, blocks: [] };
+    const changes = diffLessons(before, after, []);
+    return {
+      ...entry, round: 1, before, preview: after, changes, counts: summarizeChanges(before, changes), warnings: [],
+    };
   }
 
   // Restores the lesson file as it was before `commit`, as a new commit (null when nothing changed).
@@ -368,11 +394,22 @@ export class Store {
     const notes = this.notes(rec.lessonId);
     notes.push({
       id: rec.id, blockId: request.focus.focusBlockIds[0] ?? null, question: request.instruction,
-      answer: value.answer, sources: value.sources, createdAt: new Date().toISOString(),
+      ranges: rec.quotes ?? [], answer: value.answer, sources: value.sources, createdAt: new Date().toISOString(),
     });
     fs.mkdirSync(path.dirname(this.notesFile(rec.lessonId)), { recursive: true });
     writeAtomic(this.notesFile(rec.lessonId), formatJson(notes));
   }
+}
+
+// The parts of an editor selection a note needs to find its passage again (contracts §5).
+function noteQuotes(selection) {
+  return (selection.ranges ?? []).filter((r) => r && typeof r.blockId === 'string').map((r) => (r.whole || !r.quote
+    ? { blockId: r.blockId, whole: true }
+    : {
+      blockId: r.blockId,
+      field: typeof r.field === 'string' ? r.field : null,
+      quote: { exact: String(r.quote.exact ?? ''), prefix: String(r.quote.prefix ?? ''), suffix: String(r.quote.suffix ?? '') },
+    }));
 }
 
 function requireInstruction(instruction) {

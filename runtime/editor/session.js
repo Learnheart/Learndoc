@@ -5,7 +5,7 @@ import { h, toast, openDialog, shortHash } from './dom.js';
 import { warningText, errorText } from './i18n.js';
 import { sectionParts } from './selection.js';
 import { runningStatus, appendParts } from './ui.js';
-import { previewEntries, summaryBar } from './preview.js';
+import { previewEntries, summaryBar, commitBar } from './preview.js';
 
 const POLL_MS = 700;
 const MAX_POLL_FAILURES = 5;
@@ -21,8 +21,10 @@ export function createSession(deps) {
   // active: the changeset round being worked on, null when idle.
   //   { id, mode, instruction, focus, phase: 'running'|'ready'|'confirm'|'failed', startedAt, failures, timer, retry }
   // preview: { view, mode: 'old'|'new'|'diff', excluded: Set<group>, position } while a changeset is shown.
+  // saved: { view, mode, position, onRestore } while a history commit is shown (read-only).
   let active = null;
   let preview = null;
+  let saved = null;
   let running = null;
 
   // ---------- submitting ----------
@@ -194,18 +196,22 @@ export function createSession(deps) {
     }, t));
   }
 
-  function navigate(dir) {
-    const targets = changeTargets();
-    if (!preview || !targets.length) return;
-    const n = targets.length;
-    if (preview.position === 0) preview.position = dir > 0 ? 1 : n;
-    else preview.position = ((preview.position - 1 + dir + n) % n) + 1;
-    const target = targets[preview.position - 1];
+  function flash(target) {
     target.scrollIntoView({ block: 'center', behavior: 'smooth' });
     target.classList.add('is-flash');
     setTimeout(() => target.classList.remove('is-flash'), 1200);
+  }
+
+  function navigate(dir) {
+    const state = preview ?? saved;
+    const targets = changeTargets();
+    if (!state || !targets.length) return;
+    const n = targets.length;
+    if (state.position === 0) state.position = dir > 0 ? 1 : n;
+    else state.position = ((state.position - 1 + dir + n) % n) + 1;
+    flash(targets[state.position - 1]);
     const counter = document.querySelector('.ld-ed-nav [aria-live]');
-    if (counter) counter.textContent = `${preview.position}/${n}`;
+    if (counter) counter.textContent = `${state.position}/${n}`;
   }
 
   async function accept() {
@@ -325,11 +331,61 @@ export function createSession(deps) {
 
   // ---------- history ----------
 
+  // Shows a saved commit's changes in the page, like a preview but read-only.
+  async function showCommit(view, { onRestore }) {
+    if (active) {
+      toast(t('busy'), { error: true });
+      return;
+    }
+    saved = { view, mode: saved?.mode ?? 'diff', position: 0, onRestore };
+    selection.clear();
+    toolbar.hide();
+    await renderCommit();
+    navigate(1);
+  }
+
+  async function renderCommit() {
+    await body.sync(previewEntries(saved.view.before, saved.view, saved.mode, new Set(), t, { showRole: false }));
+    notes.place();
+    saved.position = Math.min(saved.position, changeTargets().length);
+    bar.set(commitBar(saved.view, { ...saved, total: changeTargets().length }, {
+      onNav: navigate,
+      async onMode(mode) {
+        saved.mode = mode;
+        await renderCommit();
+        document.querySelector('.ld-ed-seg[aria-pressed="true"]')?.focus();
+      },
+      onRestore: () => saved.onRestore(),
+      onClose: closeCommit,
+    }, t));
+  }
+
+  async function closeCommit() {
+    if (!saved) return;
+    saved = null;
+    bar.set(null);
+    await showLesson();
+  }
+
+  // Scrolls to the blocks a saved commit changed, as they are in the lesson now.
+  // -> number of those blocks still in the lesson
+  async function jumpTo(blockIds) {
+    if (saved) await closeCommit();
+    const sections = blockIds.map((id) => body.section(id)).filter(Boolean);
+    if (sections[0]) flash(sections[0]);
+    sections.slice(1).forEach((s) => {
+      s.classList.add('is-flash');
+      setTimeout(() => s.classList.remove('is-flash'), 1200);
+    });
+    return sections.length;
+  }
+
   async function revert(commit) {
     if (active) {
       toast(t('busy'), { error: true });
       return;
     }
+    if (saved) await closeCommit();
     try {
       const res = await api.post(`${lessonPath}/revert`, { commit });
       if (res.commit === null) {
@@ -345,9 +401,9 @@ export function createSession(deps) {
   }
 
   return {
-    // 'idle' | 'running' | 'ready' | 'confirm' | 'failed'
+    // 'idle' | 'running' | 'ready' | 'confirm' | 'failed' | 'history'
     get phase() {
-      return active?.phase ?? 'idle';
+      return active?.phase ?? (saved ? 'history' : 'idle');
     },
     get previewMode() {
       return preview?.mode ?? null;
@@ -356,5 +412,8 @@ export function createSession(deps) {
     refine,
     resume,
     revert,
+    showCommit,
+    closeCommit,
+    jumpTo,
   };
 }

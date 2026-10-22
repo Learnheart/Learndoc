@@ -944,7 +944,56 @@ html:has(body.ld-ed-has-bar) { scroll-padding-top: calc(var(--topbar-h) + var(--
   font-size: 14.5px;
   line-height: 1.55;
 }
-.ld-ed-note-q { margin-bottom: 4px; }
+/* Asked passages: dotted underline; the open notes' passages are tinted too. */
+::highlight(ld-asked) {
+  text-decoration: underline dotted var(--c4);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+::highlight(ld-asked-open) { background-color: color-mix(in srgb, var(--c4) 18%, transparent); }
+::highlight(ld-asked-flash) { background-color: color-mix(in srgb, var(--c4) 45%, transparent); }
+.ld-lesson.ld-ed-over-note { cursor: pointer; }
+.ld-ed-note-mark {
+  position: absolute;
+  top: 2px;
+  right: -30px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--c4);
+  border-radius: 11px;
+  background: var(--c4-soft);
+  color: var(--c4);
+  font: 600 12px/20px var(--font-body);
+  cursor: pointer;
+}
+.ld-ed-note-mark[aria-pressed="true"] { background: var(--c4); color: var(--surface); }
+.ld-ed-note-head { display: flex; align-items: flex-start; gap: 4px; margin-bottom: 4px; }
+.ld-ed-note-q {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-ed-note-q:hover { text-decoration: underline; }
+.ld-ed-note-x {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ld-ed-note-x:hover { background: color-mix(in srgb, var(--c4) 15%, transparent); color: var(--text); }
 .ld-ed-note-answer > :last-child { margin-bottom: 0; }
 .ld-ed-note-sources { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .ld-ed-note-sources code { margin-right: 4px; }
@@ -953,6 +1002,40 @@ html:has(body.ld-ed-has-bar) { scroll-padding-top: calc(var(--topbar-h) + var(--
 @media (min-width: 1600px) {
   .ld-ed-notes { position: absolute; top: 0; left: calc(100% + 28px); width: 240px; margin: 0; }
 }
+
+/* Notes list: dropdown under the topbar "Notes" button. */
+.ld-ed-notelist {
+  position: fixed;
+  z-index: 60;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  padding: 10px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px light-dark(rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.5));
+  font-size: 14px;
+}
+.ld-ed-notelist-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 8px; }
+.ld-ed-notelist ol { list-style: none; margin: 0; padding: 0; }
+.ld-ed-notelist-item {
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-ed-notelist-item:hover,
+.ld-ed-notelist-item:focus-visible { background: var(--c4-soft); }
+.ld-ed-notelist-item[aria-current="true"] { border-left-color: var(--c4); }
 
 /* ---------- history drawer ---------- */
 
@@ -973,4 +1056,18 @@ html:has(body.ld-ed-has-bar) { scroll-padding-top: calc(var(--topbar-h) + var(--
 .ld-ed-drawer-head h2 { margin: 0; font-size: 18px; }
 .ld-ed-history { list-style: none; margin: 12px 0 0; padding: 0; font-size: 14px; }
 .ld-ed-history li { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.ld-ed-history li .ld-ed-btn { justify-self: start; }
+.ld-ed-history-entry {
+  display: grid;
+  gap: 4px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-ed-history-entry:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ld-ed-history-actions { display: flex; flex-wrap: wrap; gap: 6px; }

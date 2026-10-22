@@ -13,8 +13,10 @@
 //
 //   b  select a sentence → Edit → preview → Before/After/Diff → accept → commit of the lesson only
 //   c  select → Insert after → preview → select inside the inserted block → Refine → cancel → unchanged
-//   d  select → Ask → note beside the block; survives reload; lesson unchanged
-//   e  History → restore to before (b) → file equals the pre-(b) content, new commit
+//   d  select → Ask → note beside the block; survives reload (closed, its passage marked;
+//      clicking the mark opens it); delete → gone from the page and the notes file
+//   e  History → entry scrolls to the changed blocks → View diff → close → restore to before (b)
+//      → file equals the pre-(b) content, new commit
 //   f  ⌘/Ctrl+K opens the prompt, Esc closes it, Alt+drag selects ≥ 2 blocks
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -581,6 +583,16 @@ async function stepD(ctx) {
   log({ step: 'd', changeset: view && { id: view.id, status: view.status, usage: view.usage, answerSources: view.answer?.sources } });
   check('d', 'lesson unchanged after ask', sha(lessonFile) === shaBefore);
   await page.openLesson(`${ctx.base}/lessons/${lessonId}`); // reload without the token: cookie auth
+  // After a reload notes start closed; the asked phrase is marked and clicking it opens its note.
+  const mark = await page.waitFor(() => {
+    const range = [...(CSS.highlights.get('ld-asked') ?? [])][0];
+    if (!range) return null;
+    range.startContainer.parentElement.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const r = range.getClientRects()[0];
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, open: document.querySelectorAll('.ld-ed-note').length };
+  }, null, { label: 'asked passage marked' }).catch((e) => ({ error: e.message }));
+  check('d', 'asked passage marked, note closed after reload', !mark.error && mark.open === 0, mark);
+  if (!mark.error) await page.click(mark);
   const after = await page.waitFor((a) => {
     const n = document.querySelector(`section[data-block-id="${a.blockId}"] .ld-ed-note`);
     return n && n.innerText.includes(a.q) ? { text: n.innerText.slice(0, 200), button: document.querySelector('.ld-ed-topbtn:not([hidden])')?.textContent } : null;
@@ -590,6 +602,12 @@ async function stepD(ctx) {
   const notesFile = path.join(ctx.project, '.learndoc', 'notes', `${lessonId}.json`);
   check('d', 'note stored in .learndoc/notes', fs.existsSync(notesFile), { notesFile });
   check('d', 'lesson unchanged after reload', sha(lessonFile) === shaBefore);
+  const stored = () => JSON.parse(fs.readFileSync(notesFile, 'utf8')).filter((n) => n.question === INSTRUCTIONS.d).length;
+  const count = stored();
+  await page.clickButton(`section[data-block-id="${sel.blockId}"] .ld-ed-note-x`, '×', 'delete note');
+  await page.clickButton('dialog.ld-ed-dialog button', page.t('delete'));
+  const removed = await page.waitFor((a) => (document.querySelector(`section[data-block-id="${a}"] .ld-ed-note`) ? null : true), sel.blockId, { label: 'note removed' }).catch((e) => ({ error: e.message }));
+  check('d', 'deleted note leaves the page and the notes file', removed === true && stored() === count - 1, { removed, before: count, after: stored() });
 }
 
 async function stepE(ctx) {
@@ -608,9 +626,11 @@ async function stepE(ctx) {
   const entries = await page.waitFor((loading) => {
     const d = document.querySelector('.ld-ed-drawer:not([hidden])');
     const items = d && [...d.querySelectorAll('.ld-ed-history > li')];
-    if (!items?.length || items[0].textContent.includes(loading)) return null;
-    return items.map((li) => ({ text: li.innerText, button: !!li.querySelector('button') }));
-  }, t('loading'), { label: 'history drawer' });
+    if (!items?.length || items[0].textContent.includes(loading.loading)) return null;
+    return items.map((li) => ({
+      text: li.innerText, button: [...li.querySelectorAll('button')].some((b) => b.textContent === loading.restore),
+    }));
+  }, { loading: t('loading'), restore: t('restoreBefore') }, { label: 'history drawer' });
   log({ step: 'e', screenshot: await page.screenshot('e-history') });
   const short = ctx.bCommit.slice(0, 7);
   must('e', 'history lists the accepted change with a restore button', entries.some((x) => x.text.includes(short) && x.button), { entries });
@@ -619,11 +639,29 @@ async function stepE(ctx) {
     const first = entries.find((x) => x.text.includes(firstCommit.slice(0, 7)));
     check('e', 'first (generated) entry shown without a restore button', first && !first.button, { first: first ?? null });
   }
-  const point = await page.call((s) => {
-    const li = [...document.querySelectorAll('.ld-ed-history > li')].find((x) => x.innerText.includes(s) && x.querySelector('button'));
-    const r = li.querySelector('button').getBoundingClientRect();
+  const entryButton = (a) => {
+    const li = [...document.querySelectorAll('.ld-ed-history > li')].find((x) => x.querySelector('code')?.textContent === a.short);
+    const button = a.text ? [...li.querySelectorAll('button')].find((b) => b.textContent === a.text) : li.querySelector('.ld-ed-history-entry');
+    const r = button.getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, short);
+  };
+  await page.click(await page.call(entryButton, { short }));
+  const jumped = await page.waitFor(() => [...document.querySelectorAll('section.is-flash')].map((s) => s.dataset.blockId).join(',') || null, null, { label: 'changed blocks flashed' }).catch((e) => ({ error: e.message }));
+  check('e', 'clicking the entry scrolls to the changed blocks', !jumped.error, { jumped });
+  await page.click(await page.call(entryButton, { short, text: t('viewCommitDiff') }));
+  const diff = await page.waitFor((s) => {
+    const bar = document.querySelector('.ld-ed-summary');
+    if (!bar || !document.querySelector('.ld-ed-drawer').hidden) return null;
+    return { names: bar.innerText.includes(`commit ${s}`), changes: document.querySelectorAll('section.is-change').length };
+  }, short, { label: 'commit diff' }).catch((e) => ({ error: e.message }));
+  log({ step: 'e', screenshot: await page.screenshot('e-diff') });
+  check('e', 'View diff shows the commit in the page', !diff.error && diff.changes > 0 && diff.names, diff);
+  await page.clickButton('.ld-ed-summary button', t('closeDiff'));
+  const closed = await page.waitFor(() => (!document.querySelector('.ld-ed-summary') && !document.querySelector('section.is-change')) || null, null, { label: 'diff closed' }).catch((e) => ({ error: e.message }));
+  check('e', 'closing the diff shows the lesson again', closed === true, { closed });
+  await page.clickButton('.ld-ed-topbtn', t('history'));
+  await page.waitFor((s) => [...document.querySelectorAll('.ld-ed-drawer:not([hidden]) .ld-ed-history > li')].some((li) => li.innerText.includes(s)) || null, short, { label: 'history drawer again' });
+  const point = await page.call(entryButton, { short, text: t('restoreBefore') });
   await page.click(point);
   const dialog = await page.waitFor(() => document.querySelector('dialog.ld-ed-dialog[open]')?.innerText, null, { label: 'restore dialog' });
   log({ step: 'e', screenshot: await page.screenshot('e-confirm') });

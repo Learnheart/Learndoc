@@ -88,7 +88,7 @@ function changeBox(tags, reasons, warnings, t) {
     warnings.map((w) => h('div', { class: 'ld-ed-warning', role: 'note' }, `⚠ ${warningText(w, t)}`)));
 }
 
-function decorator(item, mode, excluded, warnings, labels, t) {
+function decorator(item, mode, excluded, warnings, labels, t, showRole) {
   const { changes, deleted } = item;
   const role = changes.some((c) => c.role === 'primary') ? 'primary' : 'related';
   const ops = new Set(changes.map((c) => c.op));
@@ -105,7 +105,7 @@ function decorator(item, mode, excluded, warnings, labels, t) {
     if (isExcluded) section.classList.add('is-excluded');
     if (mode === 'diff' && replaced?.before && !typeChanged) diffFields(section, replaced.before, item.block);
     const tags = [
-      h('span', { class: `ld-ed-tag is-${role}` }, t(role === 'primary' ? 'rolePrimary' : 'roleRelated')),
+      showRole && h('span', { class: `ld-ed-tag is-${role}` }, t(role === 'primary' ? 'rolePrimary' : 'roleRelated')),
       [...ops].map((op) => h('span', { class: 'ld-ed-tag' }, t(`op_${op}`))),
       groups.map((g) => h('span', { class: 'ld-ed-tag' }, t('group', labels.get(g) ?? g))),
       typeChanged && h('span', { class: 'ld-ed-tag' }, t('typeChanged')),
@@ -117,7 +117,8 @@ function decorator(item, mode, excluded, warnings, labels, t) {
 
 // Body entries for body.sync(). mode: 'old' | 'new' | 'diff'.
 // Warnings that name a block (outside_focus, selection_unresolved…) are marked on that block too.
-export function previewEntries(base, view, mode, excluded, t) {
+// showRole: false for a saved commit, whose changes carry no selection/related role.
+export function previewEntries(base, view, mode, excluded, t, { showRole = true } = {}) {
   const labels = groupLabels(view, t);
   const warningsByBlock = Map.groupBy((view.warnings ?? []).filter((w) => w.blockId), (w) => w.blockId);
   return sequence(base, view, mode).map((item) => {
@@ -128,22 +129,36 @@ export function previewEntries(base, view, mode, excluded, t) {
       block: item.block,
       sig: JSON.stringify([mode, view.round, item.deleted, groupsExcluded, item.block, item.changes, warnings]),
       decorate: item.changes.length
-        ? decorator(item, mode, excluded, warnings, labels, t)
+        ? decorator(item, mode, excluded, warnings, labels, t, showRole)
         : (section) => section.prepend(changeBox([], [], warnings, t)),
     };
   });
 }
 
+const countsText = (view, t) => changeCounts(view).map(([op, n]) => t(`count_${op}`, n)).join(' · ');
+
+// "← Previous 1/3 Next →" and the Before/After/Diff switch shared by both bars.
+function viewControls(state, handlers, t) {
+  const modeButton = (mode, label) => h('button', {
+    type: 'button', class: 'ld-ed-seg', 'aria-pressed': String(state.mode === mode), onclick: () => handlers.onMode(mode),
+  }, label);
+  return [
+    h('div', { class: 'ld-ed-nav' },
+      h('button', { type: 'button', class: 'ld-ed-btn', onclick: () => handlers.onNav(-1), disabled: !state.total }, `← ${t('prev')}`),
+      h('span', { class: 'ld-ed-muted', 'aria-live': 'polite' }, `${state.position}/${state.total}`),
+      h('button', { type: 'button', class: 'ld-ed-btn', onclick: () => handlers.onNav(1), disabled: !state.total }, `${t('next')} →`)),
+    h('div', { class: 'ld-ed-segs', role: 'group', 'aria-label': t('viewModes') },
+      modeButton('old', t('viewOld')), modeButton('new', t('viewNew')), modeButton('diff', t('viewDiff'))),
+  ];
+}
+
 // Summary bar for a ready changeset. state = { mode, excluded, position, total }.
 export function summaryBar(view, state, handlers, t) {
-  const counts = changeCounts(view).map(([op, n]) => t(`count_${op}`, n)).join(' · ');
+  const counts = countsText(view, t);
   const usage = view.usage
     ? [view.usage.costUsd != null && `$${Number(view.usage.costUsd).toFixed(3)}`,
       view.usage.durationMs != null && t('seconds', Math.round(view.usage.durationMs / 1000))].filter(Boolean).join(' · ')
     : '';
-  const modeButton = (mode, label) => h('button', {
-    type: 'button', class: 'ld-ed-seg', 'aria-pressed': String(state.mode === mode), onclick: () => handlers.onMode(mode),
-  }, label);
   const groups = [...groupsOf(view)];
   const labels = groupLabels(view, t);
   const warnings = view.warnings ?? [];
@@ -153,12 +168,7 @@ export function summaryBar(view, state, handlers, t) {
       h('strong', {}, view.summary ?? ''),
       h('span', { class: 'ld-ed-muted' }, [counts, view.round > 1 && t('round', view.round), usage].filter(Boolean).join(' · '))),
     h('div', { class: 'ld-ed-summary-controls' },
-      h('div', { class: 'ld-ed-nav' },
-        h('button', { type: 'button', class: 'ld-ed-btn', onclick: () => handlers.onNav(-1), disabled: !state.total }, `← ${t('prev')}`),
-        h('span', { class: 'ld-ed-muted', 'aria-live': 'polite' }, `${state.position}/${state.total}`),
-        h('button', { type: 'button', class: 'ld-ed-btn', onclick: () => handlers.onNav(1), disabled: !state.total }, `${t('next')} →`)),
-      h('div', { class: 'ld-ed-segs', role: 'group', 'aria-label': t('viewModes') },
-        modeButton('old', t('viewOld')), modeButton('new', t('viewNew')), modeButton('diff', t('viewDiff'))),
+      viewControls(state, handlers, t),
       groups.length > 0 && h('fieldset', { class: 'ld-ed-groups' },
         h('legend', {}, t('groups')),
         groups.map(([group, n]) => h('label', {},
@@ -176,4 +186,18 @@ export function summaryBar(view, state, handlers, t) {
         h('button', { type: 'button', class: 'ld-ed-btn', onclick: handlers.onRefine }, t('refine')),
         h('button', { type: 'button', class: 'ld-ed-btn', onclick: handlers.onCancel }, t('cancel')),
         h('button', { type: 'button', class: 'ld-ed-btn is-primary', onclick: handlers.onAccept }, t('accept')))));
+}
+
+// Bar for a saved change (history commit) shown in the page. state = { mode, position, total }.
+export function commitBar(view, state, handlers, t) {
+  const meta = [`commit ${view.commit.slice(0, 7)}`, new Date(view.date).toLocaleString(t.lang), countsText(view, t)];
+  return ui('div', { class: 'ld-ed-summary', role: 'region', 'aria-label': t('commitTitle') },
+    h('div', { class: 'ld-ed-summary-text' },
+      h('strong', {}, `${t('commitTitle')}: ${view.summary.replace(/^learndoc:\s*/, '')}`),
+      h('span', { class: 'ld-ed-muted' }, meta.filter(Boolean).join(' · '))),
+    h('div', { class: 'ld-ed-summary-controls' },
+      viewControls(state, handlers, t),
+      h('div', { class: 'ld-ed-actions' },
+        view.restorable && h('button', { type: 'button', class: 'ld-ed-btn', onclick: handlers.onRestore }, t('restoreBefore')),
+        h('button', { type: 'button', class: 'ld-ed-btn is-primary', onclick: handlers.onClose }, t('closeDiff')))));
 }
