@@ -37,6 +37,7 @@ test('exportSite writes self-contained pages for every available lesson plus the
   assert.match(intro, /href="second\.html#topic"/, 'lesson: links point at the sibling file');
   assert.match(intro, /<a class="ld-next" href="second\.html">/);
   assert.match(intro, new RegExp(`<a class="ld-edit-open" href="http://127\\.0\\.0\\.1:${preferredPort(root)}/lessons/intro">`));
+  assert.match(intro, new RegExp(`<a class="ld-pdf" href="http://127\\.0\\.0\\.1:${preferredPort(root)}/export/lessons/intro\\.pdf"`), 'PDF comes from the server');
   const widgets = JSON.parse(/<script type="application\/json" id="ld-widgets">(.*?)<\/script>/.exec(intro)[1]);
   assert.deepEqual(Object.keys(widgets), ['counter'], 'only the widgets the lesson uses');
   assert.match(widgets.counter, /^data:text\/javascript;base64,/);
@@ -44,6 +45,7 @@ test('exportSite writes self-contained pages for every available lesson plus the
   const index = fs.readFileSync(path.join(root, 'html', 'index.html'), 'utf8');
   assert.match(index, /<a class="ld-card" href="intro\.html">/);
   assert.match(index, /<a class="ld-edit-open" href="http:\/\/127\.0\.0\.1:\d+\/">/);
+  assert.match(index, /<a class="ld-pdf" href="http:\/\/127\.0\.0\.1:\d+\/export\/course\.zip"/);
 
   const launcher = path.join(root, result.launcher);
   assert.equal(result.launcher, launcherName('en'));

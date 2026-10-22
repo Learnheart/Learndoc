@@ -6,6 +6,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { exportSite, launcherName } from '../lib/export.mjs';
 import { renderIndexPage, renderLessonPage } from '../lib/page.mjs';
+import { coursePdfZip, lessonPdfs, PdfError } from '../lib/pdf.mjs';
 import { bootstrapProject, CONFIG_FILE } from '../lib/project.mjs';
 import { ensureChunks } from '../lib/refs.mjs';
 import { createStaticHandler } from '../lib/static-server.mjs';
@@ -41,6 +42,19 @@ function sendJson(res, status, body) {
 }
 
 const sendError = (res, status, code, message) => sendJson(res, status, { error: { code, message } });
+
+// A download: `name` is ASCII-safe in filename= and exact in filename*= (RFC 6266).
+function sendFile(res, { name, type, data }) {
+  const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': data.length,
+    'Content-Disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  res.end(data);
+}
 
 function sendHtml(res, html, headers = {}, status = 200) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers });
@@ -118,6 +132,18 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
   const serveStatic = createStaticHandler({ projectRoot: root });
   let listeningPort = null;
 
+  // PDF exports run one at a time: each starts a headless Chrome.
+  let exportQueue = Promise.resolve();
+  const exportJob = (job) => {
+    const run = exportQueue.then(job, job);
+    exportQueue = run.catch(() => {});
+    return run.catch((error) => {
+      if (!(error instanceof PdfError)) throw error;
+      throw new HttpError(error.code === 'no_chrome' ? 503 : 404, error.code, error.message);
+    });
+  };
+  const courseZipName = `${path.basename(root).replace(/[^\p{L}\p{N}._-]+/gu, '-') || 'course'}-pdf.zip`;
+
   const routes = [
     ['GET', '/', () => ({ html: renderIndexPage({ config: store.config(), course: store.course() }) })],
     ['GET', `/lessons/(${SLUG})`, ({ id }) => ({
@@ -142,6 +168,14 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
       return store.notes(id);
     }],
     ['DELETE', `/api/lessons/(${SLUG})/notes/([A-Za-z0-9_-]+)`, ({ id, sub }) => store.deleteNote(id, sub)],
+    ['GET', `/export/lessons/(${SLUG})\\.pdf`, ({ id }) => exportJob(async () => {
+      store.lesson(id);
+      const [pdf] = await lessonPdfs(root, [id]);
+      return { file: { name: pdf.file, type: 'application/pdf', data: pdf.data } };
+    })],
+    ['GET', '/export/course\\.zip', () => exportJob(async () => ({
+      file: { name: courseZipName, type: 'application/zip', data: await coursePdfZip(root) },
+    }))],
   ].map(([method, pattern, handler]) => ({ method, re: new RegExp(`^${pattern}$`), handler }));
 
   // Static skill files are public, but only when the raw and the parsed path agree, so a
@@ -152,7 +186,8 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     const host = req.headers.host;
     if (host !== `127.0.0.1:${listeningPort}` && host !== `localhost:${listeningPort}`) return { ok: false };
     if (url.pathname === '/api/health' || isStatic(req, url)) return { ok: true };
-    const isPage = url.pathname === '/' || url.pathname.startsWith('/lessons/');
+    // Exports are page-like: a standalone page navigates to them, so they get the no-session page too.
+    const isPage = url.pathname === '/' || url.pathname.startsWith('/lessons/') || url.pathname.startsWith('/export/');
     const viaQuery = isPage && req.method === 'GET' && sameSecret(url.searchParams.get('t'), token);
     if (!viaQuery && !sameSecret(cookieValue(req, cookieName(listeningPort)), token)) return { ok: false, page: isPage && req.method === 'GET' };
     if (url.pathname.startsWith('/api/') && req.method !== 'GET' && req.method !== 'HEAD') {
@@ -179,6 +214,7 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     // still need the token header and this origin, and cross-site subresource requests get no cookie.
     const cookie = auth.setCookie ? { 'Set-Cookie': `${cookieName(listeningPort)}=${token}; HttpOnly; SameSite=Lax; Path=/` } : {};
     if (result?.html !== undefined) return sendHtml(res, result.html, cookie);
+    if (result?.file) return sendFile(res, result.file);
     const [status, payload] = Array.isArray(result) && typeof result[0] === 'number' ? result : [200, result];
     sendJson(res, status, payload);
   };

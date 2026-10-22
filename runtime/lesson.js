@@ -282,12 +282,61 @@ function initPrint() {
   });
 }
 
+// ---------- PDF export ----------
+
+// File name from Content-Disposition (filename* first), else `fallback`.
+function downloadName(res, fallback) {
+  const header = res.headers.get('Content-Disposition') ?? '';
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) return decodeURIComponent(encoded[1]);
+  return /filename="([^"]+)"/i.exec(header)?.[1] ?? fallback;
+}
+
+// The topbar Export PDF link on server pages: fetched rather than followed, so the link can show
+// that the server is busy printing. Standalone (file://) pages handle it in their own script.
+function initPdf() {
+  if (location.protocol === 'file:') return;
+  document.addEventListener('click', async (e) => {
+    const link = e.target.closest?.('a.ld-pdf');
+    if (!link) return;
+    e.preventDefault();
+    if (link.getAttribute('aria-busy') === 'true') return;
+    const label = link.textContent;
+    link.setAttribute('aria-busy', 'true');
+    link.textContent = link.dataset.busy;
+    try {
+      const res = await fetch(link.href, { cache: 'no-store' });
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        if (error?.error?.code === 'no_chrome') {
+          if (link.dataset.kind === 'lesson' && confirm(`${link.dataset.noChrome}\n${link.dataset.print}`)) print();
+          else if (link.dataset.kind !== 'lesson') alert(link.dataset.noChrome);
+          return;
+        }
+        throw new Error(error?.error?.message ?? `HTTP ${res.status}`);
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: downloadName(res, link.getAttribute('download') || 'export') });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      alert(`${link.dataset.failed}: ${err.message}`);
+    } finally {
+      link.removeAttribute('aria-busy');
+      link.textContent = label;
+    }
+  });
+}
+
 // ---------- boot ----------
 
 initTheme();
 renderMath(document);
 initToc();
 initPrint();
+initPdf();
 const ready = mountWidgets(document);
 
 window.learndoc = { ready, renderMath, mountWidgets, destroyWidgets, replaceBlock, selfTest };

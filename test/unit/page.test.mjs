@@ -61,3 +61,18 @@ test('index page: modules with cards; planned lessons are not links', () => {
   assert.match(html, /<section class="ld-module"><h2>Basics<\/h2><a class="ld-card" href="\/lessons\/intro"><h3>Intro<\/h3><p>Every block type once\.<\/p><span class="ld-badge done">Done<\/span><\/a>/);
   assert.match(html, /<div class="ld-card"><h3>Later<\/h3><span class="ld-badge planned">Planned<\/span><\/div><\/section>/);
 });
+
+test('Export PDF: every lesson page; the index only when more than one lesson can be printed', () => {
+  const html = render();
+  const link = /<span class="ld-crumb">.*?<\/span>(<a class="ld-pdf"[^>]*>[^<]*<\/a>)<button class="ld-theme-toggle"/.exec(html)?.[1];
+  assert.ok(link, 'after the crumb, before the theme toggle');
+  assert.match(link, / href="\/export\/lessons\/intro\.pdf" download="intro\.pdf"/);
+  assert.match(link, / data-kind="lesson"/);
+  assert.match(link, />Export PDF<\/a>$/);
+  assert.match(renderLessonPage({ root: FIXTURE, config: { ...config, language: 'vi' }, course, lesson }), /<a class="ld-pdf"[^>]*>Xuất PDF<\/a>/);
+
+  assert.match(renderIndexPage({ config, course }), /<a class="ld-pdf" href="\/export\/course\.zip" download="" [^>]*data-kind="course"/);
+  const single = { ...course, modules: course.modules.map((m) => ({ ...m, lessons: m.lessons.filter((l) => l.id !== 'second') })) };
+  assert.doesNotMatch(renderIndexPage({ config, course: single }), /ld-pdf/, 'one lesson: the lesson page is enough');
+});
+

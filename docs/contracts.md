@@ -258,6 +258,9 @@ port standalone pages link to), else any free port when that one is taken. The f
 standalone export at start and after every accept or restore (`startServer({ exportPages: true })`). Every server
 start bootstraps the project and indexes its references first (edits validate sources against that index).
 
+Exports run one at a time (each starts a headless Chrome); `/export/*` is authorized like a page: the no-session
+page without a cookie, and `?t=` works there too.
+
 Auth: bind `127.0.0.1`. Random 32-byte hex token per start. First page load with `?t=<token>` sets cookie
 `ld_t` (HttpOnly, SameSite=Lax, Path=/; Lax so the Edit link of a `file://` page carries it). Every request except `/api/health` and `/static/*` needs a valid
 cookie. Every `/api/*` non-GET request additionally needs header `X-Learndoc-Token: <token>` and an `Origin`
@@ -283,6 +286,8 @@ Routes:
 | POST | `/api/lessons/:id/revert` | `{ commit }` | `{ lesson, rev, commit }` (restore to before `<commit>`; the commit that added the lesson file → 409 `history/no-parent`) |
 | GET | `/api/lessons/:id/notes` | – | `[{ id, blockId, ranges, question, answer, sources, createdAt }]` (`ranges`: the asked passages as `{ blockId, field, quote }` or `{ blockId, whole: true }`; missing on older notes) |
 | DELETE | `/api/lessons/:id/notes/:noteId` | – | `{ ok: true }`; unknown note → 404 |
+| GET | `/export/lessons/:id.pdf` | – | `application/pdf` download of the lesson (`lib/pdf.mjs`); unknown lesson or no page → 404, no Chrome → 503 `no_chrome` |
+| GET | `/export/course.zip` | – | `application/zip` download, `<project-folder>-pdf.zip`: one `<id>.pdf` per lesson with a page, in course order |
 
 Changeset view:
 ```json
@@ -412,7 +417,9 @@ Files under `html/_assets/` that no page links to any more are removed. The `htm
 only `.html` files with that meta are removed when their lesson is gone. The topbar gets an Edit link to
 `http://127.0.0.1:<preferredPort>/lessons/<id>`: it probes `/api/health` (no-cors fetch) and navigates when something
 answers, else shows how to use the launcher. Without a valid cookie the server answers page GETs with a 403 HTML
-page that says the same. The launcher `<Mở khoá học|Open course>.<command|cmd|sh>` (bash; `.cmd` on Windows) runs
+page that says the same. Export PDF links to `http://127.0.0.1:<preferredPort>/export/…` and probes the same way:
+when the server answers the page navigates there (the download keeps the page); otherwise a lesson page opens the
+print dialog and the index explains the launcher. The launcher `<Mở khoá học|Open course>.<command|cmd|sh>` (bash; `.cmd` on Windows) runs
 `serve` with the PATH and node seen at export time. Files are replaced by rename (the launcher's server exports
 while the shell still reads it). `/html/` and the launcher are appended once to the repository's `info/exclude`.
 Callers: finalize (pass/skipped, config targets excluded; a failure is warning `export/failed`), the server.
@@ -445,6 +452,21 @@ pendingDemos:{total,withCandidate}, report: <absolute path>|null, commit, diagno
 `pendingDemos[]` in the report: `{ lesson, blockId, demoId, title, hintText, htmlFile, jsFile|null, controls, svgs,
 canvases, candidate: {widget, reason}|null, status: 'pending' }`; `status` reflects import time only (later demo
 conversions do not update the report). Exit: 0 pass, 1 fail, 64 usage error.
+
+## 10c. PDF export (`lib/pdf.mjs`, `lib/zip.mjs`)
+
+`lessonPdfs(root, ids?)` → `[{ id, file: '<id>.pdf', data }]`: refreshes the standalone export, then prints each
+`html/<id>.html` in one headless Chrome (`Page.printToPDF`, background graphics, CSS page size, a "n / total"
+footer) after `window.learndoc.ready` and `document.fonts.ready`. What is printed is the print stylesheet's
+business (`runtime/style.css` `@media print`): the static lesson on a light background, no topbar, TOC, prev/next,
+editor, notes or widgets; `lesson.js` opens closed quiz answers on `beforeprint` and closes them on `afterprint`.
+`ids` defaults to every lesson with a page. `PdfError` codes: `no_chrome`, `not_found`. `coursePdfZip(root)` → the
+zip of all of them. `zip(entries)`: PKZIP 2.0, deflate or store (whichever is smaller), UTF-8 names, no ZIP64.
+
+Topbar: every lesson page has an Export PDF link (`a.ld-pdf`, `data-kind="lesson"`, `download="<id>.pdf"`); the index
+has one (`data-kind="course"`) when more than one lesson is not planned. On server pages `lesson.js` fetches it
+(the link shows `data-busy` meanwhile) and saves the blob under the Content-Disposition name; on `no_chrome` a lesson
+offers the print dialog instead.
 
 ## 11. Accepted deviations (implementation is authoritative)
 

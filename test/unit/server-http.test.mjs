@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { git, makeProject, request, scenario, waitFor } from '../fake-claude/harness.mjs';
+import { findChrome } from '../../lib/chrome.mjs';
 import { startServer } from '../../server/server.mjs';
+import { unzip } from './helpers.mjs';
 
 let srv;
 let root;
@@ -149,6 +151,38 @@ test('errors are JSON', async () => {
   const gone = await request(srv.port, { method: 'DELETE', path: '/api/lessons/01-intro/notes/cs-none', headers: writeHeaders() });
   assert.deepEqual([gone.status, gone.json.error.code], [404, 'not_found']);
   assert.equal((await request(srv.port, { method: 'DELETE', path: '/api/lessons/01-intro/notes/cs-none', headers: { cookie } })).status, 403);
+});
+
+test('Export PDF needs a session; an unknown lesson is a 404; without Chrome a 503', async () => {
+  const noSession = await request(srv.port, { path: '/export/lessons/01-intro.pdf' });
+  assert.equal(noSession.status, 403);
+  assert.match(noSession.headers['content-type'], /^text\/html/, 'the no-session page, as for pages');
+  assert.equal((await request(srv.port, { path: '/export/lessons/99-none.pdf', headers: { cookie } })).status, 404);
+  const saved = process.env.LEARNDOC_CHROME;
+  process.env.LEARNDOC_CHROME = '';
+  try {
+    const res = await request(srv.port, { path: '/export/lessons/01-intro.pdf', headers: { cookie } });
+    assert.deepEqual([res.status, res.json?.error?.code], [503, 'no_chrome']);
+  } finally {
+    if (saved === undefined) delete process.env.LEARNDOC_CHROME;
+    else process.env.LEARNDOC_CHROME = saved;
+  }
+});
+
+test('Export PDF prints one lesson, or every lesson zipped', { skip: !findChrome() && 'Chrome not found' }, async () => {
+  const pdf = await request(srv.port, { path: '/export/lessons/01-intro.pdf', headers: { cookie } });
+  assert.equal(pdf.status, 200, pdf.body.slice(0, 300));
+  assert.equal(pdf.headers['content-type'], 'application/pdf');
+  assert.match(pdf.headers['content-disposition'], /^attachment; filename="01-intro\.pdf"/);
+  assert.equal(pdf.bytes.subarray(0, 5).toString(), '%PDF-');
+
+  const archive = await request(srv.port, { path: '/export/course.zip', headers: { cookie } });
+  assert.equal(archive.status, 200, archive.body.slice(0, 300));
+  assert.equal(archive.headers['content-type'], 'application/zip');
+  assert.match(archive.headers['content-disposition'], /filename="ld-proj-[^"]+-pdf\.zip"/);
+  const entries = unzip(archive.bytes);
+  assert.deepEqual(entries.map((e) => e.name), ['01-intro.pdf', '02-next.pdf'], 'course order');
+  assert.ok(entries.every((e) => e.data.subarray(0, 5).toString() === '%PDF-'));
 });
 
 test('server start indexes the references and removes what earlier versions generated', async () => {

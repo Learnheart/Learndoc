@@ -52,7 +52,7 @@ export async function waitFor(check, { timeoutMs = 10_000, what = 'condition' } 
   }
 }
 
-// Raw HTTP so tests control Host, Origin and Cookie. -> { status, headers, body, json }
+// Raw HTTP so tests control Host, Origin and Cookie. -> { status, headers, body, bytes, json }
 export function request(port, { method = 'GET', path: p = '/', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : JSON.stringify(body);
@@ -64,10 +64,11 @@ export function request(port, { method = 'GET', path: p = '/', headers = {}, bod
       const chunks = [];
       res.on('data', (d) => chunks.push(d));
       res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
+        const bytes = Buffer.concat(chunks);
+        const text = bytes.toString('utf8');
         let json = null;
         try { json = JSON.parse(text); } catch { /* not JSON */ }
-        resolve({ status: res.statusCode, headers: res.headers, body: text, json });
+        resolve({ status: res.statusCode, headers: res.headers, body: text, bytes, json });
       });
     });
     req.on('error', reject);

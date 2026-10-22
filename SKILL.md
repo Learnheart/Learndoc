@@ -59,9 +59,9 @@ Follow the [import contract](references/import-contract.md#import-flow). In shor
 
 ## Setup
 
-Nothing to install: no `npm install`, no API key. learndoc needs Node 22+ and the `claude` CLI, which the UI uses for edits. `serve` checks both (`claude --version`, not login; on an authentication error in the UI, the user runs `claude` once). A `serve` failure prints `{ "ok": false, "error": { "code", "message", "fix" } }` and exits 1: relay message and fix in one line. Chrome or Chromium is required by `import`; without it, `finalize` skips its browser check.
+Nothing to install: no `npm install`, no API key. learndoc needs Node 22+ and the `claude` CLI, which the UI uses for edits. `serve` checks both (`claude --version`, not login; on an authentication error in the UI, the user runs `claude` once). A `serve` failure prints `{ "ok": false, "error": { "code", "message", "fix" } }` and exits 1: relay message and fix in one line. Chrome or Chromium is required by `import` and by PDF export; without it, `finalize` skips its browser check.
 
-Every finalize, accept and server start also writes self-contained read-only pages to `html/` and a launcher (`Mở khoá học.command`, or `Open course.command` for an English course) in the course folder. If the user asks how to open the course without Claude, point them to those two. Never mention them in the Output line.
+Every finalize, accept and server start also writes self-contained read-only pages to `html/` and a launcher (`Mở khoá học.command`, or `Open course.command` for an English course) in the course folder. If the user asks how to open the course without Claude, point them to those two. Never mention them in the Output line. For PDF, point them to the **Export PDF** button in the page's top bar (one lesson; on the course page, every lesson zipped); it needs the server and Chrome.
 
 ## Output
 
