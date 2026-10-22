@@ -11,7 +11,7 @@ committed.
 ## 1. Layout
 
 ```
-learndoc-skill/                 (symlinked to ~/.claude/skills/learndoc)
+learndoc/                       (the skill directory; any folder name, global or per-project install)
 ├── SKILL.md
 ├── LICENSE
 ├── package.json                devDependencies + generate/vendor/test scripts only

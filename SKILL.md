@@ -13,9 +13,11 @@ Turn a prompt plus references into a course of interactive lessons, validate the
 The user works in two places only: this CLI (create a course or lesson, add a lesson, reopen the UI) and the browser UI (every edit, preview, accept/cancel, history). The user never types learndoc commands. You run two internal commands:
 
 ```bash
-node ~/.claude/skills/learndoc/bin/learndoc.mjs finalize <file> --json
-node ~/.claude/skills/learndoc/bin/learndoc.mjs serve [--lesson <id>]
+node <skill-dir>/bin/learndoc.mjs finalize <file> --json
+node <skill-dir>/bin/learndoc.mjs serve [--lesson <id>]
 ```
+
+`<skill-dir>` is the absolute path of this skill's base directory, shown when the skill loads ("Base directory for this skill"). The skill may be installed under any folder name, globally or inside a project's `.claude/skills/`, so never assume a fixed path. The skill's own files (the contracts linked below as `references/*.md`, and `schemas/`) live under `<skill-dir>`; project paths such as `references/<your-source>.md`, `references/chunks/` or `lessons/` are relative to the project root.
 
 ## Working folder
 

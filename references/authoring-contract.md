@@ -1,10 +1,10 @@
 # Authoring contract
 
-How to write `lessons/<id>.json`. The schemas in `~/.claude/skills/learndoc/schemas/` are binding; this file explains how to use them well. `finalize` rejects anything that breaks a rule marked **must**.
+How to write `lessons/<id>.json`. The schemas in `<skill-dir>/schemas/` are binding; this file explains how to use them well. `finalize` rejects anything that breaks a rule marked **must**.
 
 ## learndoc.json
 
-Full schema: `~/.claude/skills/learndoc/schemas/config.schema.json`.
+Full schema: `<skill-dir>/schemas/config.schema.json`.
 
 ```json
 { "schemaVersion": 1, "language": "vi", "audience": "Learners studying model diffing",

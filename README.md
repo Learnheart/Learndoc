@@ -40,20 +40,20 @@ No `npm install` is needed: KaTeX and pdf.js are vendored and the validators are
 
 ## Install
 
-Clone the repository into your personal skills folder (the folder must be named `learndoc`):
+**For every project** — clone into your personal skills folder:
 
 ```bash
-git clone https://github.com/Learnheart/Learndoc.git ~/.claude/skills/learndoc
+cd ~/.claude/skills && git clone https://github.com/Learnheart/Learndoc.git
 ```
 
-Or keep it elsewhere and symlink it:
+**For one project only** — clone into that project's skills folder:
 
 ```bash
-git clone https://github.com/Learnheart/Learndoc.git ~/src/learndoc
-ln -s ~/src/learndoc ~/.claude/skills/learndoc
+cd <your-project>/.claude/skills && git clone https://github.com/Learnheart/Learndoc.git
 ```
 
-Start a new Claude Code session; `learndoc` appears in the skill list. Update with `git pull`.
+The folder name doesn't matter, and a symlink to a clone kept elsewhere works too. Start a new
+Claude Code session; `learndoc` appears in the skill list. Update with `git pull`.
 
 ## Usage
 

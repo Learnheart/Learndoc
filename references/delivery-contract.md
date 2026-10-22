@@ -5,7 +5,7 @@ How `finalize` checks your files, how to read its receipt, how to repair a failu
 ## Finalize
 
 ```bash
-node ~/.claude/skills/learndoc/bin/learndoc.mjs finalize <file> --json
+node <skill-dir>/bin/learndoc.mjs finalize <file> --json
 ```
 
 learndoc needs Node 22 or newer. Run it from the project root on each file you write, in this order: `learndoc.json` first (this chunks the references; read `references/chunks/<alias>/index.json` for citable anchors and pages before planning), then `course.json`, then each `lessons/<id>.json` as soon as it is written. The target kind follows from the path: `learndoc.json` checks the config; `course.json` checks config and course; `lessons/<id>.json` checks everything.
@@ -83,7 +83,7 @@ A non-zero exit other than 2 is never success.
 When every lesson you wrote passes (or is skipped for Chrome only), run once:
 
 ```bash
-node ~/.claude/skills/learndoc/bin/learndoc.mjs serve --lesson <id>
+node <skill-dir>/bin/learndoc.mjs serve --lesson <id>
 ```
 
 It first checks the environment: Node 22 or newer, and `claude --version` (login is not checked; if UI edits fail with an authentication error, the user runs `claude` once to log in). Every failure prints `{ "ok": false, "error": { "code": "…", "message": "…", "fix": "…" } }` and exits 1, with codes such as `env/node`, `env/claude`, `project/missing` (no `learndoc.json` here or above) and `server/start` (the server did not come up; see its log). Relay the message and fix in one line. The lessons stay saved, and the user can ask to reopen them later. Chrome is not needed to serve.
