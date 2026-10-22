@@ -5,6 +5,9 @@ A [Claude Code](https://claude.com/claude-code) skill that turns a prompt plus y
 **edit it in the page**: select a passage, type what you want changed, review the change set,
 accept or cancel.
 
+## Demo
+/Users/linhbk3/Documents/Projects/Learndoc/Screen Recording 2026-10-22 at 17.08.38.mov
+
 ![Select a passage and ask for a change](docs/images/edit-prompt.png)
 
 ## What you get
