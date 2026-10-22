@@ -1071,3 +1071,75 @@ html:has(body.ld-ed-has-bar) { scroll-padding-top: calc(var(--topbar-h) + var(--
 }
 .ld-ed-history-entry:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .ld-ed-history-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ==========================================================================
+   Print (Print / Save as PDF): the static lesson only. Page chrome, the editor,
+   notes and widgets are left out; lesson.js opens the quiz answers while printing.
+   ========================================================================== */
+
+@media print {
+  @page { margin: 16mm 15mm; }
+  :root { color-scheme: light !important; }
+  html { scroll-padding-top: 0; }
+  body { background: #fff; font-size: 11pt; line-height: 1.55; }
+
+  .ld-topbar,
+  .ld-toc,
+  .ld-lesson-nav,
+  .ld-edit-help,
+  .ld-handle,
+  .ld-block.ld-widget,
+  .ld-ed-notes,
+  .ld-ed-note-mark,
+  .ld-ed-change,
+  [data-ld-ui] { display: none !important; }
+
+  .ld-layout,
+  .ld-index { display: block; max-width: none; padding: 0 !important; }
+  .ld-lesson { max-width: none; }
+  .ld-lesson-header h1,
+  .ld-index > h1 { font-size: 22pt; }
+  .ld-heading h2 { margin-top: 1.8rem; padding-top: 0.9rem; }
+  .ld-card { box-shadow: none; }
+  .ld-quiz summary { cursor: auto; }
+
+  /* Tinted boxes, code and chips keep their background even with "Background graphics" off. */
+  .ld-box,
+  pre,
+  code,
+  ol.takeaways > li,
+  table.data th,
+  .ld-chip,
+  .ld-badge,
+  .ld-quiz summary::before { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+  /* A box, formula, figure or code block stays on one page; a heading never ends a page. */
+  .ld-box,
+  .ld-math,
+  .ld-figure,
+  .ld-code,
+  details.ld-quiz,
+  .ld-card,
+  ol.takeaways > li,
+  tr,
+  img { break-inside: avoid; }
+  h1,
+  h2,
+  h3,
+  .ld-heading,
+  .ld-box-head,
+  .ld-quiz summary { break-after: avoid; }
+  p { orphans: 3; widows: 3; }
+
+  /* Scroll areas would cut content off on paper. */
+  .katex-display,
+  pre { overflow: visible; }
+  pre { white-space: pre-wrap; }
+  table.data { display: table; overflow: visible; }
+
+  ::highlight(ld-selection),
+  ::highlight(ld-asked),
+  ::highlight(ld-asked-open),
+  ::highlight(ld-asked-flash) { background-color: transparent; text-decoration: none; }
+  .ld-block { animation: none !important; }
+}

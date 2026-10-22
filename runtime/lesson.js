@@ -266,11 +266,28 @@ function initToc() {
   observeHeadings(document);
 }
 
+// ---------- print ----------
+
+// A closed <details> prints only its summary, so quiz answers are opened for printing
+// and the ones the reader had not opened are closed again afterwards.
+function initPrint() {
+  let opened = [];
+  addEventListener('beforeprint', () => {
+    opened = [...document.querySelectorAll('details.ld-quiz:not([open])')];
+    for (const details of opened) details.open = true;
+  });
+  addEventListener('afterprint', () => {
+    for (const details of opened) details.open = false;
+    opened = [];
+  });
+}
+
 // ---------- boot ----------
 
 initTheme();
 renderMath(document);
 initToc();
+initPrint();
 const ready = mountWidgets(document);
 
 window.learndoc = { ready, renderMath, mountWidgets, destroyWidgets, replaceBlock, selfTest };

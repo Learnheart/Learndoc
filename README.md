@@ -90,6 +90,9 @@ change; restoring one also undoes the changes after it.
   `.cmd` on Windows) in the course folder. It starts the local server, or reuses it, and opens the
   editable page. While the server runs, the **Edit** button on a standalone page goes straight to the
   editor; if it is not running, the button tells you to use the launcher.
+- **To save as PDF:** open a lesson and print it (⌘P / Ctrl+P → *Save as PDF*). The printout is
+  the static lesson on a light background: the top bar, contents, editor, notes and interactive
+  widgets are left out, and quiz answers are printed under their questions.
 
 Later, in Claude Code:
 
@@ -193,6 +196,8 @@ tests never call the real model. `test/e2e/journey.mjs` does call it, against a 
 - Interactive demos come from the three built-in widgets; when none fits, Claude draws a static
   SVG figure instead.
 - Standalone pages are read-only, and their Edit button needs the server started by the launcher.
+- PDF is one lesson at a time, through the browser's print dialog; widgets are not printed, so text
+  that tells the reader to drag or click a widget stays in the printout.
 - Restore works per change, not per block.
 
 ## License
