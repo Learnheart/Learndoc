@@ -27,6 +27,10 @@ export function createSession(deps) {
   let saved = null;
   let running = null;
 
+  // Listeners get { type: 'running'|'ready'|'confirm'|'failed'|'accepted'|'cancelled'|'history'|'idle', mode, ... }.
+  const listeners = new Set();
+  const emit = (event) => listeners.forEach((fn) => fn(event));
+
   // ---------- submitting ----------
 
   function edit(mode, instruction, sel, model) {
@@ -68,6 +72,7 @@ export function createSession(deps) {
   function showRunning() {
     running = runningStatus({ t, startedAt: active.startedAt, onCancel: cancel });
     bar.set(running.node);
+    emit({ type: 'running', mode: active.mode });
   }
 
   // ---------- polling ----------
@@ -113,7 +118,8 @@ export function createSession(deps) {
     }
   }
 
-  function finish() {
+  function finish(event = { type: 'idle' }) {
+    const mode = active?.mode;
     clearTimeout(active?.timer);
     active = null;
     preview = null;
@@ -121,6 +127,7 @@ export function createSession(deps) {
     bar.set(null);
     toolbar.hide();
     prompt.close();
+    emit({ mode, ...event });
   }
 
   async function showLesson() {
@@ -132,7 +139,7 @@ export function createSession(deps) {
   async function cancel() {
     const job = active;
     if (!job) return;
-    finish();
+    finish({ type: 'cancelled' });
     const deleted = job.id ? api.del(changesetPath(job.id)).catch(() => {}) : null;
     await showLesson();
     toast(t('cancelled'));
@@ -157,12 +164,14 @@ export function createSession(deps) {
     preview = { view, mode: preview?.mode ?? 'new', excluded: new Set(), position: 0 };
     await renderPreview();
     navigate(1);
+    emit({ type: 'ready', mode: job.mode, summary: view.summary ?? '', counts: view.counts });
   }
 
   const changeTargets = () => [...main.querySelectorAll(':scope > section.is-change')];
 
   async function syncPreviewBody() {
-    await body.sync(previewEntries(lesson, preview.view, preview.mode, preview.excluded, t));
+    // A whole-lesson change has no selection, so its blocks carry no "in selection"/"related" tag.
+    await body.sync(previewEntries(lesson, preview.view, preview.mode, preview.excluded, t, { showRole: preview.view.mode !== 'lesson' }));
     notes.place();
   }
 
@@ -221,7 +230,7 @@ export function createSession(deps) {
     try {
       const res = await api.post(changesetPath(job.id, 'accept'), { excludeGroups: [...preview.excluded] });
       lesson = res.lesson;
-      finish();
+      finish({ type: 'accepted', commit: res.commit });
       await showLesson();
       toast(t('accepted', shortHash(res.commit)));
     } catch (err) {
@@ -235,6 +244,7 @@ export function createSession(deps) {
   function askConfirmation(job, view) {
     job.phase = 'confirm';
     bar.set(null);
+    emit({ type: 'confirm', mode: job.mode });
     const { scope = [], reason = '' } = view.needsConfirmation ?? {};
     const marked = scope.map((id) => body.section(id)).filter(Boolean);
     marked.forEach((s) => s.classList.add('is-related'));
@@ -290,6 +300,7 @@ export function createSession(deps) {
     job.phase = 'failed';
     clearTimeout(job.timer);
     bar.set(null);
+    emit({ type: 'failed', mode: job.mode, message: message || '' });
     // A failure in round > 1 is a failed refine; the earlier rounds stay open and usable.
     const keepsPreview = view ? view.round > 1 : preview !== null;
     const close = async () => {
@@ -342,6 +353,7 @@ export function createSession(deps) {
     toolbar.hide();
     await renderCommit();
     navigate(1);
+    emit({ type: 'history' });
   }
 
   async function renderCommit() {
@@ -365,6 +377,7 @@ export function createSession(deps) {
     saved = null;
     bar.set(null);
     await showLesson();
+    emit({ type: 'idle' });
   }
 
   // Scrolls to the blocks a saved commit changed, as they are in the lesson now.
@@ -407,6 +420,13 @@ export function createSession(deps) {
     },
     get previewMode() {
       return preview?.mode ?? null;
+    },
+    // Mode of the changeset being worked on ('replace', 'insert', 'ask', 'lesson'), null when idle.
+    get mode() {
+      return active?.mode ?? null;
+    },
+    subscribe(fn) {
+      listeners.add(fn);
     },
     edit,
     refine,

@@ -320,3 +320,27 @@ test('refining a block this changeset inserted gives no outside_focus warning', 
   assert.equal(view.status, 'ready', view.error);
   assert.deepEqual(view.warnings, []);
 });
+
+test('lesson mode: no selection, the whole lesson in scope, refines stay whole-lesson', async () => {
+  const { store, fake, settle } = await setup([
+    { structured_output: { summary: 'Say norm throughout.', changes: [replaceProse('<p>A vector $\\mathbf{x}$ has a <strong>norm</strong> and a direction.</p>')] } },
+    { structured_output: { summary: 'Retitle the box.', changes: [{ op: 'replace', blockId: 'b-box1', role: 'primary', block: { type: 'box', variant: 'note', title: 'Norm', html: '<p>The norm of $\\mathbf{x}$ is never negative.</p>', sources: ['notes#basics'] } }] } },
+  ]);
+  const id = store.startEdit({ lessonId: LESSON, mode: 'lesson', instruction: 'use "norm" everywhere' });
+  const first = await settle(id);
+  assert.equal(first.status, 'ready', first.error);
+  assert.equal(first.mode, 'lesson');
+  assert.deepEqual(first.warnings, [], 'no outside_focus warning without a selection');
+  const { prompt } = fake.calls()[0];
+  assert.match(prompt, /=== MODE ===\nlesson/);
+  assert.match(prompt, /=== FOCUS ===\nNo selection: INSTRUCTION applies to the whole lesson\./);
+  assert.ok(!prompt.includes('⟦focus⟧'), 'no focus markers');
+  assert.match(prompt, /=== REFERENCES ===\n--- notes#basics ---/, 'sources cited anywhere in the lesson are included');
+
+  store.refine(id, { instruction: 'also the box title' });
+  const second = await settle(id);
+  assert.equal(second.status, 'ready', second.error);
+  assert.match(fake.calls()[1].prompt, /=== MODE ===\nlesson/);
+  assert.match(fake.calls()[1].prompt, /=== FOCUS ===\nNo selection/);
+  assert.deepEqual(second.changes.map((c) => c.blockId), ['b-prose1', 'b-box1']);
+});

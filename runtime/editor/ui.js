@@ -6,7 +6,7 @@ import { h, ui } from './dom.js';
 
 const QUOTE_CHARS = 220;
 const WHOLE_BLOCK_CHARS = 60;
-const MODELS = ['sonnet', 'opus'];
+export const MODELS = ['sonnet', 'opus'];
 const IS_MAC = /mac|iphone|ipad/i.test(navigator.userAgentData?.platform ?? navigator.userAgent);
 
 // Places a floating element below a document-coordinate point, flipping above
@@ -87,8 +87,9 @@ function scopeLabel(model, t) {
   return [t('blocks', model.blockIds.length), model.mathCount > 0 && t('formulas', model.mathCount)].filter(Boolean).join(' · ');
 }
 
-// onSubmit({ mode, instruction, model }) where model is the chosen Claude model.
-export function createPrompt({ t, defaultModel, onSubmit }) {
+// onSubmit({ mode, instruction, model }) where model is the chosen Claude model;
+// onCancel() runs when the user dismisses the prompt (close button or Esc).
+export function createPrompt({ t, defaultModel, onSubmit, onCancel }) {
   let currentEl = null;
   let chosenModel = MODELS.includes(defaultModel) ? defaultModel : MODELS[0];
 
@@ -116,6 +117,10 @@ export function createPrompt({ t, defaultModel, onSubmit }) {
       close();
       onSubmit({ mode, instruction, model: chosenModel });
     };
+    const cancel = () => {
+      close();
+      onCancel?.();
+    };
     textarea.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault();
@@ -125,7 +130,10 @@ export function createPrompt({ t, defaultModel, onSubmit }) {
     const el = ui('div', { class: 'ld-ed-prompt', role: 'dialog', 'aria-label': t(mode) },
       h('div', { class: 'ld-ed-prompt-head' },
         h('strong', {}, t(mode)),
-        h('span', { class: 'ld-ed-chip' }, scopeLabel(selection, t))),
+        h('span', { class: 'ld-ed-chip' }, scopeLabel(selection, t)),
+        h('button', {
+          type: 'button', class: 'ld-ed-prompt-x', title: t('close'), 'aria-label': t('close'), onclick: cancel,
+        }, '×')),
       selection && quotePreview(selection, t),
       textarea,
       h('div', { class: 'ld-ed-prompt-foot' },
@@ -135,7 +143,7 @@ export function createPrompt({ t, defaultModel, onSubmit }) {
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        close();
+        cancel();
       }
     });
     document.body.append(el);

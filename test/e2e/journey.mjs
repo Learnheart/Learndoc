@@ -18,6 +18,9 @@
 //   e  History → entry scrolls to the changed blocks → View diff → close → restore to before (b)
 //      → file equals the pre-(b) content, new commit
 //   f  ⌘/Ctrl+K opens the prompt, Esc closes it, Alt+drag selects ≥ 2 blocks
+//   g  whole-lesson chat: × drops a draft unsent; a request → preview (no selection tags) → cancel → unchanged
+//   h  History → tick one entry → delete → gone, lesson unchanged → delete all → only the first entry
+//      (rewrites git history: runs only with --scratch, on a disposable copy of a project)
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -36,21 +39,24 @@ const INSTRUCTIONS = {
   c1: 'Thêm một ví dụ cụ thể về agent đặt vé máy bay',
   c2: 'Rút gọn ví dụ còn 3 câu',
   d: 'Khác biệt giữa agent và chatbot là gì?',
+  g: 'Ở mọi tiêu đề mục cấp 2 trong bài, bỏ số thứ tự ở đầu tiêu đề (giữ nguyên phần chữ).',
+  g2: 'Riêng tiêu đề mục "Nguồn tham khảo" thì giữ lại số thứ tự như cũ.',
 };
 
 // ---------- args ----------
 
 function parseArgs(argv) {
-  const opts = { project: null, out: null, lesson: null, steps: 'abcdef' };
+  const opts = { project: null, out: null, lesson: null, steps: 'abcdefg', scratch: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') opts.out = argv[++i];
     else if (a === '--lesson') opts.lesson = argv[++i];
-    else if (a === '--steps') opts.steps = argv[++i].replace(/[^a-f]/g, '');
+    else if (a === '--steps') opts.steps = argv[++i].replace(/[^a-h]/g, '');
+    else if (a === '--scratch') opts.scratch = true;
     else if (!opts.project) opts.project = a;
     else throw new Error(`unexpected argument ${a}`);
   }
-  if (!opts.project) throw new Error('usage: journey.mjs <projectDir> [--out dir] [--lesson id] [--steps abcdef]');
+  if (!opts.project) throw new Error('usage: journey.mjs <projectDir> [--out dir] [--lesson id] [--steps abcdefgh] [--scratch]');
   opts.project = path.resolve(opts.project);
   opts.out = path.resolve(opts.out ?? path.join(opts.project, '.learndoc', 'e2e'));
   return opts;
@@ -109,7 +115,9 @@ async function ensureServer(project) {
   const file = path.join(project, '.learndoc', 'server.json');
   const read = () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null);
   let info = read();
-  if (!info || !(await health(info.port))) {
+  // A copied project carries the original's server.json; never drive another project's server.
+  const ours = async (i) => (await health(i.port))?.projectRoot === fs.realpathSync(project);
+  if (!info || !(await ours(info))) {
     const r = spawnSync(process.execPath, [path.join(SKILL, 'bin/learndoc.mjs'), 'serve', '--no-open'], { cwd: project, encoding: 'utf8' });
     log({ step: 'setup', serve: r.stdout.trim(), stderr: r.stderr.trim() || undefined });
     info = read();
@@ -117,6 +125,7 @@ async function ensureServer(project) {
   if (!info) throw new Error('no .learndoc/server.json after serve');
   const h = await health(info.port);
   if (!h) throw new Error(`server on port ${info.port} is not healthy`);
+  if (h.projectRoot !== fs.realpathSync(project)) throw new Error(`server on port ${info.port} serves ${h.projectRoot}, not ${project}`);
   return { ...info, health: h };
 }
 
@@ -584,13 +593,15 @@ async function stepD(ctx) {
   check('d', 'lesson unchanged after ask', sha(lessonFile) === shaBefore);
   await page.openLesson(`${ctx.base}/lessons/${lessonId}`); // reload without the token: cookie auth
   // After a reload notes start closed; the asked phrase is marked and clicking it opens its note.
-  const mark = await page.waitFor(() => {
-    const range = [...(CSS.highlights.get('ld-asked') ?? [])][0];
+  const mark = await page.waitFor((blockId) => {
+    // The asked block's mark: a project may already have notes on other blocks.
+    const range = [...(CSS.highlights.get('ld-asked') ?? [])]
+      .find((r) => r.startContainer.parentElement?.closest('section[data-block-id]')?.dataset.blockId === blockId);
     if (!range) return null;
     range.startContainer.parentElement.scrollIntoView({ block: 'center', behavior: 'instant' });
     const r = range.getClientRects()[0];
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, open: document.querySelectorAll('.ld-ed-note').length };
-  }, null, { label: 'asked passage marked' }).catch((e) => ({ error: e.message }));
+  }, sel.blockId, { label: 'asked passage marked' }).catch((e) => ({ error: e.message }));
   check('d', 'asked passage marked, note closed after reload', !mark.error && mark.open === 0, mark);
   if (!mark.error) await page.click(mark);
   const after = await page.waitFor((a) => {
@@ -696,7 +707,19 @@ async function stepF(ctx) {
   await page.key('Escape', { code: 'Escape', keyCode: 27 });
   const closed = await page.waitFor(() => !document.querySelector('.ld-ed-prompt'), null, { label: 'prompt closed' }).catch(() => false);
   check('f', 'Esc closes the prompt', closed);
-  await page.key('Escape', { code: 'Escape', keyCode: 27 }); // clears the selection
+  const unselected = () => !document.querySelector('.ld-block.is-selected') && !document.querySelector('.ld-ed-toolbar:not([hidden])');
+  check('f', 'Esc also drops the selection', await page.waitFor(unselected, null, { label: 'selection cleared', timeoutMs: 3000 }).catch(() => false));
+  await page.selectText({ sectionSelector: 'main.ld-lesson > section.ld-prose', nth: 0, mode: 'phrase' });
+  await page.toolbar();
+  await page.clickButton('.ld-ed-toolbar button', page.t('ask'));
+  await page.prompt();
+  await page.type('draft I no longer want to send');
+  await page.clickButton('.ld-ed-prompt-x', null, 'close (×)');
+  const dismissed = await page.waitFor(() => !document.querySelector('.ld-ed-prompt'), null, { label: 'prompt closed' }).catch(() => false);
+  const quiet = await page.eval('!document.querySelector(".ld-ed-running")');
+  log({ step: 'f', screenshot: await page.screenshot('f-close-button') });
+  check('f', '× closes the prompt without sending', dismissed && quiet);
+  check('f', '× also drops the selection', await page.waitFor(unselected, null, { label: 'selection cleared', timeoutMs: 3000 }).catch(() => false));
   await page.eval('getSelection().removeAllRanges()');
   const box = await page.call(() => {
     const sections = [...document.querySelectorAll('main.ld-lesson > section.ld-block')];
@@ -722,6 +745,108 @@ async function stepF(ctx) {
   await page.key('Escape', { code: 'Escape', keyCode: 27 });
 }
 
+async function stepG(ctx) {
+  const { page, lessonFile } = ctx;
+  const { t } = page;
+  const shaBefore = sha(lessonFile);
+  const panel = () => page.waitFor(() => {
+    const el = document.querySelector('.ld-ed-chat:not([hidden])');
+    return el && { focused: document.activeElement === el.querySelector('textarea'), draft: el.querySelector('textarea').value, chip: el.querySelector('.ld-ed-chip')?.textContent };
+  }, null, { label: 'chat panel' });
+  await page.clickButton('.ld-ed-topbtn', t('chat'));
+  const opened = await panel();
+  check('g', `${t('chat')} opens the chat with its input focused`, opened.focused && opened.chip === t('wholeLesson'), opened);
+  await page.type('draft I no longer want to send');
+  await page.clickButton('.ld-ed-chat .ld-ed-prompt-x', null, 'chat ×');
+  const closed = await page.waitFor(() => !!document.querySelector('.ld-ed-chat[hidden]'), null, { label: 'chat closed' }).catch(() => false);
+  check('g', '× closes the chat without sending', closed && !(await page.eval('!!document.querySelector(".ld-ed-running")')));
+  await page.clickButton('.ld-ed-topbtn', t('chat'));
+  const reopened = await panel();
+  check('g', 'the closed draft is gone', reopened.draft === '' && reopened.focused, reopened);
+
+  await page.type(INSTRUCTIONS.g);
+  await page.key('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+  const outcome = await page.waitClaude('g', { kind: 'preview' });
+  log({ step: 'g', screenshot: await page.screenshot('g-chat-preview') });
+  must('g', 'whole-lesson preview ready', outcome.kind === 'preview', outcome);
+  const view = [...page.changesetViews.values()].at(-1);
+  log({ step: 'g', view: view && { id: view.id, mode: view.mode, summary: view.summary, counts: view.counts, warnings: view.warnings, usage: view.usage } });
+  check('g', 'changeset is whole-lesson with changes in several blocks', view?.mode === 'lesson' && (view.changes?.length ?? 0) >= 2, { mode: view?.mode, changes: view?.changes?.length });
+  await checkTexts('g', page, view?.summary ?? outcome.text, view);
+  const chat = await page.eval('[...document.querySelectorAll(".ld-ed-chat-msg")].map(m => ({ role: m.className.replace("ld-ed-chat-msg is-", ""), text: m.innerText.slice(0, 200) }))');
+  check('g', 'chat shows the request and Claude\'s summary', chat.some((m) => m.role === 'user') && chat.some((m) => m.role === 'claude' && view && m.text.startsWith(view.summary.slice(0, 120))), { chat });
+  check('g', 'no "in selection" tags on a whole-lesson preview', (await page.eval('document.querySelectorAll(".ld-ed-tag.is-primary").length')) === 0);
+  check('g', 'the chat input has the focus again', await page.eval('document.activeElement === document.querySelector(".ld-ed-chat textarea")'));
+  await page.type(INSTRUCTIONS.g2);
+  await page.key('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+  const refined = await page.waitClaude('g', { kind: 'preview', round: 2 });
+  log({ step: 'g', screenshot: await page.screenshot('g-chat-refined') });
+  const v2 = page.changesetViews.get(view?.id);
+  check('g', 'a second message refines the open preview, still whole-lesson (round 2)', refined.kind === 'preview' && v2?.round === 2 && v2?.mode === 'lesson', { round: v2?.round, summary: v2?.summary, counts: v2?.counts });
+  await page.clickButton('.ld-ed-actions button', t('cancel'));
+  await page.toast(escapeRe(t('cancelled')));
+  check('g', 'lesson file unchanged after cancel (sha)', sha(lessonFile) === shaBefore);
+  const last = await page.eval('[...document.querySelectorAll(".ld-ed-chat-msg")].at(-1)?.innerText');
+  check('g', 'chat notes the cancel', last === t('cancelled'), { last });
+  await page.key('Escape', { code: 'Escape', keyCode: 27 });
+  check('g', 'Esc closes the chat', await page.waitFor(() => !!document.querySelector('.ld-ed-chat[hidden]'), null, { label: 'chat closed' }).catch(() => false));
+}
+
+async function stepH(ctx) {
+  const { page, project, lessonFile, lessonId } = ctx;
+  const { t } = page;
+  must('h', 'run with --scratch (this step rewrites git history)', ctx.scratch);
+  const rel = `lessons/${lessonId}.json`;
+  const original = fs.readFileSync(lessonFile, 'utf8');
+  for (const n of [1, 2]) {
+    fs.writeFileSync(lessonFile, original + '\n'.repeat(n));
+    git(project, 'commit', '--quiet', '-m', `learndoc: e2e change ${n}`, '--', rel);
+  }
+  const content = fs.readFileSync(lessonFile, 'utf8');
+  const entries = () => git(project, 'log', '--format=%s', '--', rel).split('\n').filter(Boolean);
+  const before = entries();
+  const drawer = () => page.waitFor((loading) => {
+    const d = document.querySelector('.ld-ed-drawer:not([hidden])');
+    const items = d && [...d.querySelectorAll('.ld-ed-history > li')];
+    if (!items?.length || items[0].textContent.includes(loading)) return null;
+    return items.map((li) => ({ text: li.innerText.split('\n')[0], tick: !!li.querySelector('.ld-ed-history-tick') }));
+  }, t('loading'), { label: 'history drawer' });
+  const deleteDialog = async (label) => {
+    await page.eval('document.querySelector(".ld-ed-toast")?.classList.remove("is-visible")'); // not the previous toast
+    await page.clickButton('.ld-ed-history-bulk button', label);
+    await page.clickButton('dialog.ld-ed-dialog button', t('delete'));
+    const toast = await page.toast(escapeRe(t('historyDeleted', 999, '\u0000')).replace('999', '\\d+').replace('\u0000', '.+'));
+    return toast;
+  };
+
+  await page.clickButton('.ld-ed-topbtn', t('history'));
+  const listed = await drawer();
+  check('h', 'every entry but the first has a tick box', listed.slice(0, -1).every((e) => e.tick) && !listed.at(-1).tick, { listed });
+  const point = await page.call((text) => {
+    const li = [...document.querySelectorAll('.ld-ed-history > li')].find((x) => x.innerText.includes(text));
+    const box = li.querySelector('.ld-ed-history-tick');
+    box.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const r = box.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, 'e2e change 1');
+  await page.click(point);
+  const label = await page.eval('document.querySelector(".ld-ed-history-bulk button").textContent');
+  check('h', 'the selected count shows on the delete button', label === t('deleteSelected', 1), { label });
+  const one = await deleteDialog(t('deleteSelected', 1));
+  await drawer();
+  log({ step: 'h', screenshot: await page.screenshot('h-deleted-one') });
+  const afterOne = entries();
+  check('h', 'one entry deleted (toast, git log)', !one.error && afterOne.length === before.length - 1 && !afterOne.includes('learndoc: e2e change 1'), { toast: one, before, after: afterOne });
+  check('h', 'lesson file unchanged', fs.readFileSync(lessonFile, 'utf8') === content);
+
+  const all = await deleteDialog(t('deleteAll'));
+  const remaining = await drawer();
+  log({ step: 'h', screenshot: await page.screenshot('h-deleted-all') });
+  check('h', 'delete all leaves only the first entry', !all.error && entries().length === 1 && remaining.length === 1 && !remaining[0].tick, { toast: all, remaining, log: entries() });
+  check('h', 'lesson file unchanged and committed', fs.readFileSync(lessonFile, 'utf8') === content && git(project, 'status', '--porcelain', '--', rel) === '');
+  await page.clickButton('.ld-ed-drawer-head button', t('close'));
+}
+
 // ---------- main ----------
 
 async function main() {
@@ -738,8 +863,8 @@ async function main() {
   if (!chrome) throw new Error('Chrome not found (set LEARNDOC_CHROME)');
   const browser = new ChromeBrowser(chrome);
   const page = new Page(browser, opts.out);
-  const ctx = { browser, page, project: opts.project, lessonId, base, lessonUrl, lessonFile: path.join(opts.project, 'lessons', `${lessonId}.json`) };
-  const steps = { a: stepA, b: stepB, c: stepC, d: stepD, e: stepE, f: stepF };
+  const ctx = { browser, page, project: opts.project, lessonId, base, lessonUrl, lessonFile: path.join(opts.project, 'lessons', `${lessonId}.json`), scratch: opts.scratch };
+  const steps = { a: stepA, b: stepB, c: stepC, d: stepD, e: stepE, f: stepF, g: stepG, h: stepH };
   try {
     await page.init();
     await page.openLesson(lessonUrl);

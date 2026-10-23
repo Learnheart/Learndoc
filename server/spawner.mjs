@@ -21,7 +21,8 @@ function claudeArgs({ model, schemaText, skillDir }) {
 
 // -> { done: Promise<{ ok, value, costUsd, durationMs, error?, raw? }>, cancel() }
 // error = { code: 'cli_error'|'api_error'|'no_structured_output'|'timeout'|'cancelled', message }
-export function runClaude({ prompt, model, schemaText, skillDir, cwd, timeoutMs = TIMEOUT_MS }) {
+export function runClaude({ prompt, model, schemaText, skillDir, cwd, timeoutMs }) {
+  timeoutMs ??= TIMEOUT_MS;
   const bin = process.env.LEARNDOC_CLAUDE_BIN || 'claude';
   const started = Date.now();
   const child = spawn(bin, claudeArgs({ model, schemaText, skillDir }), { cwd, stdio: ['pipe', 'pipe', 'pipe'] });

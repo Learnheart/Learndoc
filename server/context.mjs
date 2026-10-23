@@ -19,12 +19,12 @@ export async function buildContextPack(opts) {
   const sections = [
     ['MODE', mode],
     ['INSTRUCTION', instruction],
-    ['FOCUS', focusText(lesson, focus)],
+    ['FOCUS', mode === 'lesson' ? 'No selection: INSTRUCTION applies to the whole lesson.' : focusText(lesson, focus)],
     ['LESSON', lessonJson(withFocusMarkers(lesson, focus))],
     ['NOTATION', JSON.stringify(lesson.notation ?? {}, null, 1)],
     ['ANCHORS', anchorsText(lesson)],
     ['INBOUND', inboundText(root, lesson)],
-    ['REFERENCES', referencesText(root, config, lesson, focus)],
+    ['REFERENCES', referencesText(root, config, lesson, mode === 'lesson' ? lesson.blocks.map((b) => b.id) : focus.focusBlockIds)],
     ['CONFIG', JSON.stringify(await configInfo(root, config, lesson, opts.maxRelated))],
   ];
   if (opts.previousSummaries?.length) sections.push(['PREVIOUS ROUNDS', previousText(opts.previousSummaries)]);
@@ -101,8 +101,9 @@ function inboundText(root, lesson) {
 
 // ---------- references ----------
 
-function referencesText(root, config, lesson, focus) {
-  const focusIds = new Set(focus.focusBlockIds);
+// Excerpts of the sources the given blocks cite, within EXCERPT_BUDGET.
+function referencesText(root, config, lesson, blockIds) {
+  const focusIds = new Set(blockIds);
   const refs = [...new Set(lesson.blocks.filter((b) => focusIds.has(b.id)).flatMap((b) => b.sources ?? []))];
   let budget = EXCERPT_BUDGET;
   const parts = [];

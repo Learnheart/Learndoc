@@ -162,6 +162,7 @@ export async function startServer({ root, port = 0, token = crypto.randomBytes(3
     }],
     ['GET', `/api/lessons/(${SLUG})/history`, ({ id }) => store.history(id)],
     ['GET', `/api/lessons/(${SLUG})/history/([0-9a-f]{40,64})`, ({ id, sub }) => store.commitView(id, sub)],
+    ['POST', `/api/lessons/(${SLUG})/history/delete`, ({ id, body }) => store.deleteHistory(id, body)],
     ['POST', `/api/lessons/(${SLUG})/revert`, ({ id, body }) => refreshExport(store.restoreBefore(id, body.commit))],
     ['GET', `/api/lessons/(${SLUG})/notes`, ({ id }) => {
       store.lesson(id);

@@ -10,6 +10,7 @@ import { createBody, findSection } from './editor/body.js';
 import { createToolbar, createPrompt, createBar } from './editor/ui.js';
 import { createNotes } from './editor/notes.js';
 import { createHistory } from './editor/history.js';
+import { createChat } from './editor/chat.js';
 import { createSession } from './editor/session.js';
 
 const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.content;
@@ -75,6 +76,10 @@ async function boot() {
       if (mode === 'refine') session.refine(instruction, sel, model);
       else session.edit(mode, instruction, sel, model);
     },
+    onCancel() {
+      selection.clear();
+      getSelection().removeAllRanges();
+    },
   });
 
   // The prompt sits by the selection when there is one, else at `fallback` or under the bar.
@@ -93,7 +98,11 @@ async function boot() {
   });
 
   const history = createHistory({ api, lessonId, t, session });
-  addToTopbar(topButton(t('history'), { onclick: () => history.toggle() }));
+  const chat = createChat({ t, defaultModel: config.editModel, session });
+  addToTopbar(
+    topButton(t('chat'), { class: 'ld-ed-topbtn ld-ed-chat-btn', title: t('chatTitle'), onclick: () => chat.toggle() }),
+    topButton(t('history'), { onclick: () => history.toggle() }),
+  );
 
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !prompt.isOpen) {

@@ -52,7 +52,7 @@ learndoc/                       (the skill directory; any folder name, global or
 ├── runtime/                    browser-only
 │   ├── lesson.js               boot: theme, KaTeX render, widget mount, TOC
 │   ├── editor.js               editor boot (only on editable pages)
-│   ├── editor/                 api, body, dom, history, i18n, notes, preview, selection, session, ui modules
+│   ├── editor/                 api, body, chat, dom, history, i18n, notes, preview, selection, session, ui modules
 │   ├── style.css
 │   ├── widgets/                built-in widgets: vector-plane.js, distribution-bars.js, function-plot.js
 │   └── vendor/katex/           katex.min.js, katex.min.css, fonts/, katex.mjs (Node check)
@@ -275,14 +275,15 @@ Routes:
 | GET | `/project/{widgets,assets}/*` | – | project files (no `..`, realpath inside project) |
 | GET | `/api/health` | – | `{ ok, pid, projectRoot }` |
 | GET | `/api/lessons/:id` | – | `{ lesson, rev, config: {boxTypes, language, features, editModel}, openChangeset? }` |
-| POST | `/api/edit` | `{ lessonId, mode: 'replace'\|'insert'\|'ask', instruction, selection, model? }` | `{ changesetId }` (202) |
+| POST | `/api/edit` | `{ lessonId, mode: 'replace'\|'insert'\|'ask'\|'lesson', instruction, selection, model? }` | `{ changesetId }` (202); `lesson` (the whole-lesson chat) ignores `selection` |
 | GET | `/api/changesets/:id` | – | Changeset view (below) |
 | POST | `/api/changesets/:id/confirm` | – | `{ changesetId }` (re-runs with maxRelated raised to scope size) |
 | POST | `/api/changesets/:id/refine` | `{ instruction, selection? }` | `{ changesetId }` (same id, new round) |
 | POST | `/api/changesets/:id/accept` | `{ excludeGroups?: [] }` | `{ lesson, rev, commit }` |
 | DELETE | `/api/changesets/:id` | – | `{ ok }` (kills running claude) |
-| GET | `/api/lessons/:id/history` | – | `[{ commit, date, summary, restorable }]` (`restorable` is false for the commit that added the lesson file) |
+| GET | `/api/lessons/:id/history` | – | `[{ commit, date, summary, restorable, deletable }]` (`restorable` is false for the commit that added the lesson file; `deletable` is true for changes since the file was last added) |
 | GET | `/api/lessons/:id/history/:commit` | – | `{ commit, date, summary, restorable, round, before, preview, changes, counts, warnings }`: the lesson before and after one saved commit and its net block changes, shaped like a changeset view (`before` has no blocks for the commit that added the file); unknown commit → 404 |
+| POST | `/api/lessons/:id/history/delete` | `{ all: true }` or `{ commits: [hash] }` | `{ removed, freedBytes, retainedVersions, cleanupError? }` (`retainedVersions`: deleted versions still stored because a reflog entry or unreachable commit outside learndoc's reach holds them): drops those saved versions from git history (each change folded into the previous one; the lesson file, index and working tree unchanged), then prunes; the commit that added the file → 400; refused with 409 `history/shared` (another ref holds the commits), `history/merges`, `history/busy`, `history/unsupported`, `history/unknown` |
 | POST | `/api/lessons/:id/revert` | `{ commit }` | `{ lesson, rev, commit }` (restore to before `<commit>`; the commit that added the lesson file → 409 `history/no-parent`) |
 | GET | `/api/lessons/:id/notes` | – | `[{ id, blockId, ranges, question, answer, sources, createdAt }]` (`ranges`: the asked passages as `{ blockId, field, quote }` or `{ blockId, whole: true }`; missing on older notes) |
 | DELETE | `/api/lessons/:id/notes/:noteId` | – | `{ ok: true }`; unknown note → 404 |
@@ -480,7 +481,16 @@ Recorded after review; the sections above already reflect them.
   round so re-applying is deterministic; group ids are namespaced per round (`r2:g-notation`). Known limitation: a
   block touched by groups in several refine rounds is listed under the latest round's group only.
 - History "undo" is "restore to before `<commit>`": the lesson file is set to its content before that commit and the
-  result is committed as a new commit (history is never rewritten).
+  result is committed as a new commit (history is not rewritten). Only "delete history" rewrites it
+  (`lib/git.mjs` `dropFileVersions`): commits are rebuilt with plumbing from the first changed one on, the branch is
+  moved with a compare-and-swap `update-ref`, the tip tree must equal the old one. Cleanup then deletes only the reflog
+  entries of replaced commits (`reflog delete --rewrite`), pins every other dangling object (`fsck --connectivity-only`) under
+  `refs/learndoc-keep/*` while `repack -a -d` + `prune --expire=<rewrite time>` run, and removes the pins, so earlier unreachable
+  work (reset-away commits, dropped stashes) survives. Commits are handled as bytes (any `encoding`); a cleanup failure
+  after the branch moved is returned as `cleanupError`, not thrown.
+- `lesson` mode: FOCUS is "no selection", LESSON has no focus markers, REFERENCES covers the sources of every block,
+  and the claude call may take 300 s (150 s otherwise). Refining a `lesson` changeset without a selection stays
+  `lesson`; with a selection it is a `replace` round like any other.
 - `serve` runs a preflight (Node ≥ 22, `claude --version`; login not checked); all serve failures share
   `{ ok: false, error: { code, message, fix } }` (`env/node`, `env/claude`, `project/missing`, `server/start`). Chrome is
   only needed by finalize's browser-check.

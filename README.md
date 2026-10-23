@@ -20,9 +20,10 @@ https://github.com/user-attachments/assets/6a6af30a-d542-4ff8-b18b-83a76d9aade7
 - **In-page editing.** Select text (or whole blocks) and choose *Edit*, *Insert after* or *Ask*.
   The change comes back as a change set you preview in place — old / new / diff — and accept,
   cancel or refine. Related edits elsewhere in the lesson (renamed notation, cross-references)
-  are included with a reason for each.
+  are included with a reason for each. A change that spans the whole lesson goes through the
+  **Edit whole lesson** chat instead, without selecting anything.
 - **History.** Every accepted change is a git commit in your project; restore any earlier version
-  from the page.
+  from the page, or delete old entries (ticked ones, or all) to free the space they take.
 - **Local and private.** A local server on `127.0.0.1` runs `claude -p` with your existing Claude
   Code login. No API key, no hosting.
 
@@ -77,8 +78,16 @@ Then, in the page:
 3. Review the preview: jump between changes, switch old / new / diff, untick groups you don't want.
 4. **Accept** (commits the lesson), **Cancel**, or select text in the preview and **Refine**.
 
+For a change across the whole lesson ("say *norm* instead of *length* everywhere"), open
+**Sửa cả bài / Edit whole lesson** in the top bar and type it there: the preview, Accept and Cancel
+work the same, and another message refines the open preview. × or Esc closes the chat (and any
+prompt) without sending.
+
 Ask answers appear as notes beside the block and never change the lesson. **History** lists every
-change; restoring one also undoes the changes after it.
+change; restoring one also undoes the changes after it. Tick entries and **Delete selected**, or
+**Delete all**, to drop old versions: the lesson stays as it is, each deleted entry's change is
+folded into the entry before it, and git history is rewritten and pruned (this cannot be undone,
+and is refused while another branch or tag still holds those commits).
 
 ### Open it again without Claude
 
@@ -202,6 +211,9 @@ tests never call the real model. `test/e2e/journey.mjs` does call it, against a 
 - PDF export needs Chrome or Chromium and the local server. Widgets are not printed, so text that
   tells the reader to drag or click a widget stays in the PDF.
 - Restore works per change, not per block.
+- Deleting history rewrites the commits of the repo from the first affected one on (other files'
+  commits included, with new hashes); it needs a linear history, and a clone pushed elsewhere
+  would need a force push.
 
 ## License
 

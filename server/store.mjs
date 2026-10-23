@@ -13,7 +13,11 @@ import { buildContextPack } from './context.mjs';
 import { evaluateAnswer, evaluateChangeset, focusWarnings, newDiagnostics } from './edit-validation.mjs';
 import { runClaude } from './spawner.mjs';
 
-const MODES = ['replace', 'insert', 'ask'];
+// `lesson`: no selection, the instruction applies to the whole lesson (the in-page chat).
+const MODES = ['replace', 'insert', 'ask', 'lesson'];
+const NO_SELECTION = { focusBlockIds: [], ranges: [] };
+// A whole-lesson edit may rewrite many blocks, so its claude call gets longer than a focused one.
+const LESSON_TIMEOUT_MS = 300_000;
 const TERMINAL = new Set(['accepted', 'cancelled', 'answered']);
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,63}$/;
 export const DEFAULT_MODEL = 'sonnet';
@@ -179,6 +183,7 @@ export class Store {
   startEdit({ lessonId, mode, instruction, selection, model }) {
     if (!MODES.includes(mode)) throw new HttpError(400, 'bad_request', `mode must be one of ${MODES.join(', ')}`);
     requireInstruction(instruction);
+    if (mode === 'lesson') selection = NO_SELECTION;
     requireSelection(selection);
     const { lesson, rev } = this.lesson(lessonId);
     const open = this.openFor(lessonId);
@@ -205,9 +210,11 @@ export class Store {
     if (selection !== undefined) requireSelection(selection);
     if (model !== undefined) rec.model = checkModel(model);
     const preview = this.preview(rec);
-    const focus = resolveSelection(preview, selection ?? { focusBlockIds: this.changedBlockIds(rec, preview), ranges: [] });
+    // A whole-lesson changeset refined without a selection stays whole-lesson.
+    const whole = rec.mode === 'lesson' && selection === undefined;
+    const focus = resolveSelection(preview, whole ? NO_SELECTION : selection ?? { focusBlockIds: this.changedBlockIds(rec, preview), ranges: [] });
     rec.round += 1;
-    this.launch(rec, { mode: 'replace', instruction, focus });
+    this.launch(rec, { mode: whole ? 'lesson' : 'replace', instruction, focus });
     return rec.id;
   }
 
@@ -269,13 +276,14 @@ export class Store {
     return lesson;
   }
 
-  // -> [{ commit, date, summary, restorable }]; a commit that created the lesson file has no
-  // earlier version to restore.
+  // -> [{ commit, date, summary, restorable, deletable }]; a commit that created the lesson file has
+  // no earlier version to restore, and only changes since the file was last added can be deleted.
   history(lessonId) {
     this.lesson(lessonId);
     const rel = lessonRel(lessonId);
     const added = git.commitsAdding(this.root, rel);
-    return git.log(this.root, rel).map((c) => ({ ...c, restorable: !added.has(c.commit) }));
+    const droppable = new Set(git.droppableCommits(this.root, rel));
+    return git.log(this.root, rel).map((c) => ({ ...c, restorable: !added.has(c.commit), deletable: droppable.has(c.commit) }));
   }
 
   // One saved change shown like a changeset preview: the lesson before and after `commit`
@@ -290,6 +298,37 @@ export class Store {
     const changes = diffLessons(before, after, []);
     return {
       ...entry, round: 1, before, preview: after, changes, counts: summarizeChanges(before, changes), warnings: [],
+    };
+  }
+
+  // Deletes saved versions of the lesson from git history (`all`, or the listed `commits`): each
+  // deleted entry's change is folded into the entry before it, the lesson itself stays as it is,
+  // and the freed objects are pruned. The entry that created the lesson cannot be deleted.
+  // -> { removed, freedBytes }
+  deleteHistory(lessonId, { commits, all } = {}) {
+    this.lesson(lessonId);
+    const rel = lessonRel(lessonId);
+    const deletable = git.droppableCommits(this.root, rel);
+    let drop;
+    if (all === true) drop = deletable;
+    else if (Array.isArray(commits) && commits.length && commits.every((c) => typeof c === 'string' && deletable.includes(c))) drop = [...new Set(commits)];
+    else throw new HttpError(400, 'bad_request', 'pass all: true or commits: full hashes of deletable entries in this lesson\'s history');
+    if (!drop.length) return { removed: 0, freedBytes: 0 };
+    const count = () => git.log(this.root, rel, { limit: 100000 }).length;
+    const before = count();
+    let result;
+    try {
+      result = git.dropFileVersions(this.root, rel, new Set(drop));
+    } catch (error) {
+      if (error.code?.startsWith('history/')) throw new HttpError(409, error.code, error.message);
+      throw error;
+    }
+    // The history is rewritten even when freeing the space failed; that is only reported.
+    if (result.cleanupError) console.error(`learndoc: history of ${rel} rewritten, but cleanup failed: ${result.cleanupError}`);
+    // A deleted entry can take others with it: a change undone by the next one leaves nothing.
+    return {
+      removed: before - count(), freedBytes: result.freedBytes, retainedVersions: result.retainedVersions ?? 0,
+      ...(result.cleanupError && { cleanupError: result.cleanupError }),
     };
   }
 
@@ -347,7 +386,7 @@ export class Store {
 
     let retry;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const outcome = await this.call(rec, await pack(retry), request.mode === 'ask' ? 'answer' : 'changeset');
+      const outcome = await this.call(rec, await pack(retry), request.mode === 'ask' ? 'answer' : 'changeset', request.mode === 'lesson' ? LESSON_TIMEOUT_MS : undefined);
       if (rec.status === 'cancelled') return;
       if (!outcome.ok) return this.finish(rec, { status: 'failed', error: `${outcome.error.code}: ${outcome.error.message}` });
       const result = await evaluate(outcome.value);
@@ -357,8 +396,8 @@ export class Store {
     this.finish(rec, { status: 'failed', error: 'the edit did not pass validation', diagnostics: retry.diagnostics });
   }
 
-  async call(rec, prompt, schema) {
-    const handle = runClaude({ prompt, model: rec.model, schemaText: SCHEMAS[schema], skillDir: SKILL_ROOT, cwd: this.root });
+  async call(rec, prompt, schema, timeoutMs) {
+    const handle = runClaude({ prompt, model: rec.model, schemaText: SCHEMAS[schema], skillDir: SKILL_ROOT, cwd: this.root, timeoutMs });
     this.running.set(rec.id, handle);
     try {
       const outcome = await handle.done;

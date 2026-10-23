@@ -768,6 +768,21 @@ ins.ld-ins {
   font-size: 14px;
 }
 .ld-ed-prompt-head { display: flex; align-items: center; gap: 10px; }
+.ld-ed-prompt-x {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ld-ed-prompt-x:hover { background: var(--bg-soft); color: var(--text); }
 .ld-ed-quote {
   max-height: 120px;
   overflow: auto;
@@ -804,6 +819,35 @@ ins.ld-ins {
   font: inherit;
   font-size: 13px;
 }
+
+/* ---------- whole-lesson chat ---------- */
+
+.ld-ed-chat {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 62;
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(640px, calc(100vh - var(--ld-ed-bar-h, 0px) - 100px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.5));
+  font-size: 14px;
+}
+.ld-ed-chat-log { display: grid; align-content: start; gap: 8px; min-height: 60px; overflow-y: auto; }
+.ld-ed-chat-log > p { margin: 0; }
+.ld-ed-chat-msg { padding: 7px 10px; border-radius: 8px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ld-ed-chat-msg.is-user { justify-self: end; max-width: 85%; background: var(--accent-soft); }
+.ld-ed-chat-msg.is-claude { background: var(--bg-soft); }
+.ld-ed-chat-msg.is-claude .ld-ed-muted { margin-top: 4px; white-space: normal; }
+.ld-ed-chat-msg.is-error { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.ld-ed-chat-msg.is-system { padding: 0 2px; color: var(--muted); font-size: 13px; }
+.ld-ed-chat-hint { margin: 0; }
 
 /* ---------- fixed status / summary bar ---------- */
 
@@ -1089,6 +1133,11 @@ html:has(body.ld-ed-has-bar) { scroll-padding-top: calc(var(--topbar-h) + var(--
 }
 .ld-ed-history-entry:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .ld-ed-history-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ld-ed-history-bulk { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ld-ed-history-row { display: flex; align-items: flex-start; gap: 8px; }
+.ld-ed-history-row .ld-ed-history-entry { flex: 1; min-width: 0; }
+.ld-ed-history-tick { flex: none; margin: 8px 0 0; accent-color: var(--accent); cursor: pointer; }
+.ld-ed-history li:has(.ld-ed-history-tick) .ld-ed-history-actions { margin-left: 21px; }
 
 /* ==========================================================================
    Print (Print / Save as PDF): the static lesson only. Page chrome, the editor,

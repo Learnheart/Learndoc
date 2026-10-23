@@ -139,6 +139,25 @@ test('API writes need cookie, token header and Origin', async () => {
   assert.match(standalone(), /<strong>length<\/strong>/, 'restore refreshes the standalone page');
   assert.equal(git(root, 'log', '-1', '--format=%s').trim(), `learndoc: restore before ${history[0].commit.slice(0, 7)}`);
   assert.equal((await request(srv.port, { method: 'POST', path: '/api/lessons/01-intro/revert', headers: good, body: { commit: 'HEAD' } })).status, 400);
+
+  const lessonFile = path.join(root, 'lessons', '01-intro.json');
+  const current = fs.readFileSync(lessonFile, 'utf8');
+  const list = async () => (await request(srv.port, { path: '/api/lessons/01-intro/history', headers: { cookie } })).json;
+  const deleteEntries = (body) => request(srv.port, { method: 'POST', path: '/api/lessons/01-intro/history/delete', headers: good, body });
+  const three = await list();
+  assert.equal(three.length, 3);
+  assert.equal((await deleteEntries({ commits: [three[2].commit] })).status, 400, 'the entry that created the lesson cannot be deleted');
+  assert.equal((await deleteEntries({})).status, 400);
+  const one = await deleteEntries({ commits: [three[1].commit] });
+  assert.equal(one.status, 200, one.body);
+  assert.equal(one.json.removed, 1);
+  assert.deepEqual((await list()).map((h) => h.summary), [three[0].summary, 'init'], '"Say norm." is folded into the entry that created the lesson');
+  assert.equal(fs.readFileSync(lessonFile, 'utf8'), current, 'the lesson itself is unchanged');
+  const all = await deleteEntries({ all: true });
+  assert.deepEqual([all.status, all.json.removed], [200, 1]);
+  assert.deepEqual((await list()).map((h) => [h.summary, h.restorable]), [['init', false]]);
+  assert.equal(fs.readFileSync(lessonFile, 'utf8'), current);
+  assert.equal(git(root, 'status', '--porcelain', '--', 'lessons').trim(), '');
 });
 
 test('errors are JSON', async () => {
