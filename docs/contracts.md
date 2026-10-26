@@ -271,7 +271,7 @@ Routes:
 |---|---|---|---|
 | GET | `/` | – | course index page |
 | GET | `/lessons/:id` | – | lesson page (editor enabled) |
-| GET | `/static/{runtime,shared,delta}/*` | – | skill files |
+| GET | `/static/{runtime,shared,delta,schemas}/*` | – | skill files |
 | GET | `/project/{widgets,assets}/*` | – | project files (no `..`, realpath inside project) |
 | GET | `/api/health` | – | `{ ok, pid, projectRoot }` |
 | GET | `/api/lessons/:id` | – | `{ lesson, rev, config: {boxTypes, language, features, editModel}, openChangeset? }` |
@@ -284,6 +284,7 @@ Routes:
 | GET | `/api/lessons/:id/history` | – | `[{ commit, date, summary, restorable, deletable }]` (`restorable` is false for the commit that added the lesson file; `deletable` is true for changes since the file was last added) |
 | GET | `/api/lessons/:id/history/:commit` | – | `{ commit, date, summary, restorable, round, before, preview, changes, counts, warnings }`: the lesson before and after one saved commit and its net block changes, shaped like a changeset view (`before` has no blocks for the commit that added the file); unknown commit → 404 |
 | POST | `/api/lessons/:id/history/delete` | `{ all: true }` or `{ commits: [hash] }` | `{ removed, freedBytes, retainedVersions, cleanupError? }` (`retainedVersions`: deleted versions still stored because a reflog entry or unreachable commit outside learndoc's reach holds them): drops those saved versions from git history (each change folded into the previous one; the lesson file, index and working tree unchanged), then prunes; the commit that added the file → 400; refused with 409 `history/shared` (another ref holds the commits), `history/merges`, `history/busy`, `history/unsupported`, `history/unknown` |
+| POST | `/api/lessons/:id/blocks/:blockId` | `{ before, fields }` | `{ lesson, rev, commit }` (manual edit: `fields` maps the block type's `MANUAL_FIELDS` (`shared/render.mjs`) to new source; `before` must equal the block on disk, else 409 `stale`; validated like an edit (new error diagnostics → 422 `invalid`); open changeset → 409 `changeset_open`; commits only the lesson file as `learndoc: manual edit <blockId>: <excerpt>` (`sửa trực tiếp` for vi); unchanged → `commit: null`) |
 | POST | `/api/lessons/:id/revert` | `{ commit }` | `{ lesson, rev, commit }` (restore to before `<commit>`; the commit that added the lesson file → 409 `history/no-parent`) |
 | GET | `/api/lessons/:id/notes` | – | `[{ id, blockId, ranges, question, answer, sources, createdAt }]` (`ranges`: the asked passages as `{ blockId, field, quote }` or `{ blockId, whole: true }`; missing on older notes) |
 | DELETE | `/api/lessons/:id/notes/:noteId` | – | `{ ok: true }`; unknown note → 404 |
@@ -365,6 +366,14 @@ destroyWidgets(root)
 replaceBlock(sectionEl, block, ctx)  // destroy, swap HTML from renderBlock, renderMath, mountWidgets
 selfTest()                // async -> { widgets: [{name, mount, update, destroy, error?}] }  (browser-check)
 ```
+Manual edit (`runtime/editor/manual.js`): the block's `MANUAL_FIELDS` get `contenteditable` (`true` for html
+fields, `plaintext-only` otherwise), formulas inside `contenteditable=false`. On save each field is serialized back:
+html fields keep only whitelisted tags/attributes/classes (other elements unwrapped, a stray top-level `<div>`
+becomes `<p>`), math spans become `$latex$`/`$$latex$$`, literal `$` becomes `\$` (not in `code`/`pre`),
+`/lessons/…` hrefs become `lesson:…`; plain fields are text with line breaks as spaces. A field is sent only when
+its serialization differs from the one taken when editing started, so untouched fields keep their source as is.
+Paste inserts `text/plain`; drop is refused.
+
 Widget module contract:
 ```js
 export default { name, propsSchema, mount(el, props, ctx) { return { update(props), destroy() } } }

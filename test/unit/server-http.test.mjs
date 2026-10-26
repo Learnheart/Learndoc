@@ -160,6 +160,23 @@ test('API writes need cookie, token header and Origin', async () => {
   assert.equal(git(root, 'status', '--porcelain', '--', 'lessons').trim(), '');
 });
 
+test('a manual block edit is a write: saved, committed and exported; the whitelist is served', async () => {
+  const lesson = (await request(srv.port, { path: '/api/lessons/01-intro', headers: { cookie } })).json.lesson;
+  const heading = lesson.blocks[0];
+  const save = (headers, body) => request(srv.port, { method: 'POST', path: `/api/lessons/01-intro/blocks/${heading.id}`, headers, body });
+  assert.equal((await save({ cookie }, { before: heading, fields: { text: '1. Getting started' } })).status, 403, 'needs the token');
+  const res = await save(writeHeaders(), { before: heading, fields: { text: '1. Getting started' } });
+  assert.equal(res.status, 200, res.body);
+  assert.equal(res.json.lesson.blocks[0].text, '1. Getting started');
+  assert.match(fs.readFileSync(path.join(root, 'html', '01-intro.html'), 'utf8'), /1\. Getting started/, 'the standalone page is refreshed');
+  assert.match(git(root, 'log', '-1', '--format=%s'), /^learndoc: manual edit b-head1: 1\. Getting started/);
+  const stale = await save(writeHeaders(), { before: heading, fields: { text: 'Again' } });
+  assert.deepEqual([stale.status, stale.json.error.code], [409, 'stale']);
+  const whitelist = await request(srv.port, { path: '/static/schemas/html-whitelist.json' });
+  assert.equal(whitelist.status, 200);
+  assert.ok(whitelist.json.html.tags.p);
+});
+
 test('errors are JSON', async () => {
   const res = await request(srv.port, { method: 'POST', path: '/api/edit', headers: writeHeaders(), body: { lessonId: '01-intro', mode: 'rewrite' } });
   assert.equal(res.status, 400);

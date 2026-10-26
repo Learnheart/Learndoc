@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { applyChangeset, diffLessons, excludeGroups, summarizeChanges } from '../delta/changeset.mjs';
 import { resolveSelection } from '../delta/selection.mjs';
+import { MANUAL_FIELDS } from '../shared/render.mjs';
 import { selectDiagnostics } from '../lib/diagnostics.mjs';
 import * as git from '../lib/git.mjs';
 import { CONFIG_FILE, COURSE_FILE, SKILL_ROOT, STATE_DIR, formatJson, lessonFile, readJson } from '../lib/project.mjs';
@@ -274,6 +275,40 @@ export class Store {
       if (broken) throw new HttpError(422, 'invalid', `excluding those groups leaves the lesson invalid: ${broken.message}`);
     }
     return lesson;
+  }
+
+  // Manual edit: the user typed into one block's fields on the page. `before` is the block as the
+  // page had it (409 stale when it changed since); `fields` maps MANUAL_FIELDS of its type to the new
+  // source. Validated like an edit, then written and committed. -> { lesson, rev, commit }
+  async saveBlock(lessonId, blockId, { before, fields } = {}) {
+    const { lesson, file } = this.lesson(lessonId);
+    if (this.openFor(lessonId)) throw new HttpError(409, 'changeset_open', `lesson "${lessonId}" has an open changeset`);
+    const index = lesson.blocks.findIndex((b) => b.id === blockId);
+    if (index < 0) throw new HttpError(404, 'not_found', `no block ${blockId} in lesson "${lessonId}"`);
+    const block = lesson.blocks[index];
+    if (JSON.stringify(before) !== JSON.stringify(block)) throw new HttpError(409, 'stale', `block ${blockId} changed since the page loaded it`);
+    const allowed = MANUAL_FIELDS[block.type] ?? [];
+    const entries = Object.entries(fields && typeof fields === 'object' ? fields : {});
+    if (!entries.length || entries.some(([k, v]) => !allowed.includes(k) || typeof v !== 'string')) {
+      throw new HttpError(400, 'bad_request', `fields must map ${allowed.join(', ') || '(none)'} of a ${block.type} block to strings`);
+    }
+    const next = { ...block, ...Object.fromEntries(entries) };
+    if (next.type === 'code' && !next.caption?.trim()) delete next.caption;
+    if (JSON.stringify(next) === JSON.stringify(block)) return { lesson, rev: fileRev(file), commit: null };
+    const updated = { ...lesson, blocks: lesson.blocks.map((b, i) => (i === index ? next : b)) };
+    const errors = (await newDiagnostics(lesson, updated, this.project())).filter((d) => d.severity === 'error');
+    if (errors.length) throw new HttpError(422, 'invalid', errors.map((d) => d.message).join('; '));
+    // Re-checked after the await: an edit may have started or been accepted meanwhile.
+    if (this.openFor(lessonId)) throw new HttpError(409, 'changeset_open', `lesson "${lessonId}" has an open changeset`);
+    if (JSON.stringify(this.lesson(lessonId).lesson) !== JSON.stringify(lesson)) throw new HttpError(409, 'stale', 'the lesson changed on disk meanwhile');
+    const label = (this.config().language ?? '').startsWith('vi') ? 'sửa trực tiếp' : 'manual edit';
+    const text = oneLine(entries.map(([, v]) => v).join(' ').replace(/<[^>]*>/g, ' '));
+    const excerpt = text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text;
+    const commit = withRollback(file, () => {
+      writeAtomic(file, formatJson(updated));
+      return git.commitPaths(this.root, [lessonRel(lessonId)], `learndoc: ${label} ${blockId}: ${excerpt}`);
+    });
+    return { lesson: updated, rev: fileRev(file), commit };
   }
 
   // -> [{ commit, date, summary, restorable, deletable }]; a commit that created the lesson file has

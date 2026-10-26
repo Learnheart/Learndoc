@@ -12,6 +12,7 @@ import { createNotes } from './editor/notes.js';
 import { createHistory } from './editor/history.js';
 import { createChat } from './editor/chat.js';
 import { createSession } from './editor/session.js';
+import { canEditManually } from './editor/manual.js';
 
 const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.content;
 
@@ -62,10 +63,19 @@ async function boot() {
         return;
       }
       lastPoint = point;
-      toolbar.show(session.phase === 'idle' ? ['replace', 'insert', 'ask'] : ['refine'], point);
+      toolbar.show(session.phase === 'idle' ? ['replace', 'insert', 'ask', ...(manualTarget(model) ? ['manual'] : [])] : ['refine'], point);
     },
   });
-  const toolbar = createToolbar({ t, onAction: (action, point) => openPrompt(action, point) });
+  // Direct typing works on one block at a time, and only on blocks with visible text fields.
+  const manualTarget = (model) => model?.blockIds.length === 1
+    && canEditManually(session.lesson.blocks.find((b) => b.id === model.blockIds[0])) && model.blockIds[0];
+  const toolbar = createToolbar({
+    t,
+    onAction(action, point) {
+      if (action === 'manual') session.startManual(manualTarget(selection.current));
+      else openPrompt(action, point);
+    },
+  });
   const prompt = createPrompt({
     t,
     defaultModel: config.editModel,

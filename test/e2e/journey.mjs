@@ -21,6 +21,9 @@
 //   g  whole-lesson chat: × drops a draft unsent; a request → preview (no selection tags) → cancel → unchanged
 //   h  History → tick one entry → delete → gone, lesson unchanged → delete all → only the first entry
 //      (rewrites git history: runs only with --scratch, on a disposable copy of a project)
+//   i  select → Edit directly → type → ⌘/Ctrl+Enter → saved and committed (lesson only, formulas kept);
+//      Esc drops typed text; Enter does not break a heading; a quiz question takes spaces and stays
+//      open; saving untouched text commits nothing; the saved change is restored at the end
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -46,17 +49,17 @@ const INSTRUCTIONS = {
 // ---------- args ----------
 
 function parseArgs(argv) {
-  const opts = { project: null, out: null, lesson: null, steps: 'abcdefg', scratch: false };
+  const opts = { project: null, out: null, lesson: null, steps: 'abcdefgi', scratch: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--out') opts.out = argv[++i];
     else if (a === '--lesson') opts.lesson = argv[++i];
-    else if (a === '--steps') opts.steps = argv[++i].replace(/[^a-h]/g, '');
+    else if (a === '--steps') opts.steps = argv[++i].replace(/[^a-i]/g, '');
     else if (a === '--scratch') opts.scratch = true;
     else if (!opts.project) opts.project = a;
     else throw new Error(`unexpected argument ${a}`);
   }
-  if (!opts.project) throw new Error('usage: journey.mjs <projectDir> [--out dir] [--lesson id] [--steps abcdefgh] [--scratch]');
+  if (!opts.project) throw new Error('usage: journey.mjs <projectDir> [--out dir] [--lesson id] [--steps abcdefghi] [--scratch]');
   opts.project = path.resolve(opts.project);
   opts.out = path.resolve(opts.out ?? path.join(opts.project, '.learndoc', 'e2e'));
   return opts;
@@ -849,6 +852,113 @@ async function stepH(ctx) {
 
 // ---------- main ----------
 
+// Manual edit: no claude call. Starts from the toolbar of a selection or a block handle.
+async function stepI(ctx) {
+  const { page, lessonFile, project } = ctx;
+  const { t } = page;
+  const readLesson = () => JSON.parse(fs.readFileSync(lessonFile, 'utf8'));
+  const original = readLesson();
+  const headBefore = git(project, 'rev-parse', 'HEAD');
+  const state = () => page.call(() => {
+    const section = document.querySelector('section.is-manual');
+    const fields = section ? [...section.querySelectorAll('[contenteditable]:not(.math)')] : [];
+    return {
+      blockId: section?.dataset.blockId ?? null,
+      editable: fields.map((f) => [f.dataset.field, f.contentEditable]),
+      mathLocked: section ? [...section.querySelectorAll('span.math')].every((m) => m.contentEditable === 'false') : null,
+      focusInside: fields.some((f) => f.contains(document.activeElement) || f === document.activeElement),
+      bar: document.querySelector('.ld-ed-manual strong')?.textContent ?? null,
+      details: section?.querySelector('details')?.open ?? null,
+    };
+  });
+  const startFromSelection = async () => {
+    await page.eval('getSelection().removeAllRanges(); document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))');
+    const sel = await page.selectText({ sectionSelector: 'main.ld-lesson > section.ld-prose', nth: 0, mode: 'phrase' });
+    const buttons = await page.toolbar();
+    await page.clickButton('.ld-ed-toolbar button', t('manual'));
+    await page.waitFor(() => !!document.querySelector('section.is-manual'), null, { label: 'manual edit' });
+    return { sel, buttons };
+  };
+  const startFromHandle = async (type) => {
+    const point = await page.call((type) => {
+      const section = document.querySelector(`main.ld-lesson > section.ld-${type}`);
+      if (!section) return null;
+      section.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const r = section.querySelector('.ld-handle').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, type);
+    if (!point) return false;
+    await page.mouse('mouseMoved', point.x - 40, point.y);
+    await page.click(point);
+    await page.toolbar();
+    await page.clickButton('.ld-ed-toolbar button', t('manual'));
+    await page.waitFor(() => !!document.querySelector('section.is-manual'), null, { label: 'manual edit' });
+    return true;
+  };
+  const saveKey = () => page.key('Enter', { code: 'Enter', keyCode: 13, modifiers: CMD });
+  const escape = () => page.key('Escape', { code: 'Escape', keyCode: 27 });
+  const ended = () => page.waitFor(() => !document.querySelector('section.is-manual, [contenteditable]:not(.math), .ld-ed-manual'), null, { label: 'manual edit ended' });
+
+  const { sel, buttons } = await startFromSelection();
+  check('i', `${t('manual')} is offered for a one-block selection`, buttons.includes(t('manual')), { buttons, selected: sel.selected });
+  const editing = await state();
+  log({ step: 'i', screenshot: await page.screenshot('i-editing') });
+  check('i', 'the block\'s fields become editable, formulas locked, caret inside, bar shown',
+    editing.blockId === sel.blockId && editing.editable.length > 0 && editing.mathLocked && editing.focusInside && editing.bar === t('manualEditing'), editing);
+  const marker = ' ZQX-manual';
+  await page.type(marker);
+  await saveKey();
+  const saved = await page.toast(pattern(t, 'accepted', '[0-9a-f]{7}')).catch((e) => ({ error: e.message }));
+  await ended();
+  const after = readLesson();
+  const changed = after.blocks.find((b) => b.id === sel.blockId);
+  const before = original.blocks.find((b) => b.id === sel.blockId);
+  const mathCount = (html) => (html.match(/\$/g) ?? []).length;
+  check('i', '⌘/Ctrl+Enter saves the typed text to the lesson file', !saved.error && changed.html.includes(marker.trim()), { toast: saved, html: changed.html });
+  check('i', 'formulas and every other block are kept', mathCount(changed.html) === mathCount(before.html)
+    && JSON.stringify(after.blocks.filter((b) => b.id !== sel.blockId)) === JSON.stringify(original.blocks.filter((b) => b.id !== sel.blockId)));
+  const files = commitFiles(project, 'HEAD');
+  check('i', 'one commit, the lesson file only', git(project, 'rev-list', '--count', `${headBefore}..HEAD`) === '1'
+    && files.length === 1 && files[0] === path.relative(project, lessonFile), { files });
+  check('i', 'the page shows the saved text', await page.eval(`!!document.querySelector('section[data-block-id="${sel.blockId}"]')?.textContent.includes('${marker.trim()}')`));
+
+  await startFromSelection();
+  await page.type(' DISCARD-me');
+  await escape();
+  await ended();
+  const dropped = await page.eval(`!document.querySelector('main.ld-lesson').textContent.includes('DISCARD-me')`);
+  check('i', 'Esc drops the typed text, page and file', dropped && !fs.readFileSync(lessonFile, 'utf8').includes('DISCARD-me'));
+
+  if (await startFromHandle('heading')) {
+    const text = await page.eval('document.querySelector("section.is-manual [data-field]").textContent');
+    await page.key('Enter', { code: 'Enter', keyCode: 13, text: '\r' });
+    const kept = await page.eval('document.querySelector("section.is-manual [data-field]").textContent');
+    check('i', 'Enter does not break a heading', kept === text, { text, kept });
+    const headBeforeNoop = git(project, 'rev-parse', 'HEAD');
+    await saveKey();
+    const noop = await page.toast(escapeRe(t('nothingChanged'))).catch((e) => ({ error: e.message }));
+    await ended();
+    check('i', 'saving untouched text commits nothing', !noop.error && git(project, 'rev-parse', 'HEAD') === headBeforeNoop, noop);
+  }
+  if (await startFromHandle('quiz')) {
+    const field = 'document.querySelector("section.is-manual summary")';
+    await page.eval(`${field}.focus(); getSelection().collapse(${field}, ${field}.childNodes.length)`);
+    await page.key(' ', { code: 'Space', keyCode: 32, text: ' ' });
+    await page.type('Q');
+    const quiz = await state();
+    const typed = await page.eval(`${field}.textContent`);
+    check('i', 'a quiz question takes spaces and stays open', quiz.details === true && typed.endsWith(' Q'), { typed, quiz });
+    await escape();
+    await ended();
+  }
+
+  const token = await page.eval('document.querySelector(\'meta[name="learndoc-token"]\').content');
+  const commit = git(project, 'rev-parse', 'HEAD');
+  const restored = await page.eval(`fetch('/api/lessons/${ctx.lessonId}/revert', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Learndoc-Token': '${token}' }, body: JSON.stringify({ commit: '${commit}' }) }).then(r => r.status)`);
+  check('i', 'the saved change is restored', restored === 200 && JSON.stringify(readLesson()) === JSON.stringify(original));
+  await page.openLesson(ctx.lessonUrl);
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   fs.mkdirSync(opts.out, { recursive: true });
@@ -864,7 +974,7 @@ async function main() {
   const browser = new ChromeBrowser(chrome);
   const page = new Page(browser, opts.out);
   const ctx = { browser, page, project: opts.project, lessonId, base, lessonUrl, lessonFile: path.join(opts.project, 'lessons', `${lessonId}.json`), scratch: opts.scratch };
-  const steps = { a: stepA, b: stepB, c: stepC, d: stepD, e: stepE, f: stepF, g: stepG, h: stepH };
+  const steps = { a: stepA, b: stepB, c: stepC, d: stepD, e: stepE, f: stepF, g: stepG, h: stepH, i: stepI };
   try {
     await page.init();
     await page.openLesson(lessonUrl);

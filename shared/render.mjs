@@ -25,6 +25,17 @@ export const FIELD_KINDS = {
   quiz: { question: 'plain', answer: 'html' },
 };
 
+// Fields the user can type into directly on the page (manual edit): the visible text fields.
+// Formulas (math latex), widget props, figure alt/svg/src stay with Claude edits.
+export const MANUAL_FIELDS = {
+  heading: ['text'],
+  prose: ['html'],
+  box: ['title', 'html'],
+  code: ['code', 'caption'],
+  figure: ['caption'],
+  quiz: ['question', 'answer'],
+};
+
 function baseLanguage(language) {
   return String(language || 'en').split('-')[0];
 }

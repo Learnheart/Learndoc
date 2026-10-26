@@ -32,7 +32,7 @@ The project is the current working directory unless the user names another folde
 | Existing HTML pages or course to convert | Import flow. Never rewrite the content yourself. |
 | Add a lesson to an existing course | [Course planning → Adding a lesson](references/course-planning.md#adding-a-lesson), then fast path steps 5–8. |
 | Reopen the UI ("mở lại bài học", `/learndoc` with no task) | `serve` (or `serve --lesson <id>` when the user names a lesson), then reply per Output. |
-| Change an existing lesson ("sửa đoạn 2 của bài 03") | Do not edit lesson JSON. Run `serve --lesson <id>` and tell the user to select the passage in the page and type the request there; the page opens at the lesson, not the block. |
+| Change an existing lesson ("sửa đoạn 2 của bài 03") | Do not edit lesson JSON. Run `serve --lesson <id>` and tell the user to select the passage in the page and type the request there (for a typo or a word, **Edit directly** lets them type it themselves); the page opens at the lesson, not the block. |
 | A new course on another topic while `learndoc.json` exists | Ask whether to use a new folder. |
 
 ## Fast path

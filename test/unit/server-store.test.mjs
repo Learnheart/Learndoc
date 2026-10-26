@@ -344,3 +344,42 @@ test('lesson mode: no selection, the whole lesson in scope, refines stay whole-l
   assert.match(fake.calls()[1].prompt, /=== FOCUS ===\nNo selection/);
   assert.deepEqual(second.changes.map((c) => c.blockId), ['b-prose1', 'b-box1']);
 });
+
+test('saveBlock: typed fields are validated, written and committed; nothing else changes', async () => {
+  const { root, store, lessonOnDisk } = await setup([]);
+  const original = lessonOnDisk();
+  const block = original.blocks[2];
+  const html = '<p>The length of $\\mathbf{x}$ is <em>never</em> negative, costs \\$0.</p>';
+  const res = await store.saveBlock(LESSON, 'b-box1', { before: block, fields: { title: 'Keep in mind', html } });
+  assert.match(res.commit, /^[0-9a-f]{40}$/);
+  const saved = lessonOnDisk();
+  assert.deepEqual(saved.blocks[2], { ...block, title: 'Keep in mind', html });
+  assert.deepEqual(saved.blocks.filter((_, i) => i !== 2), original.blocks.filter((_, i) => i !== 2));
+  assert.deepEqual(res.lesson, saved);
+  assert.equal(git(root, 'log', '-1', '--format=%s').trim(), 'learndoc: manual edit b-box1: Keep in mind The length of $\\mathbf{x}$ is never negative, c…');
+  assert.deepEqual(git(root, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n'), [`lessons/${LESSON}.json`]);
+
+  const again = await store.saveBlock(LESSON, 'b-box1', { before: saved.blocks[2], fields: { title: 'Keep in mind' } });
+  assert.equal(again.commit, null, 'an unchanged field is a no-op');
+});
+
+test('saveBlock refuses stale, unknown, non-editable and invalid input, and an open changeset', async () => {
+  const { store, settle, lessonOnDisk } = await setup([{ structured_output: { summary: 's', changes: [replaceProse('<p>Changed.</p>')] } }]);
+  const blocks = lessonOnDisk().blocks;
+  const prose1 = blocks[1];
+  const refused = async (args, status, code) => {
+    await assert.rejects(store.saveBlock(LESSON, ...args), (e) => e.status === status && e.code === code);
+  };
+  await refused(['b-prose1', { before: { ...prose1, html: '<p>old</p>' }, fields: { html: '<p>x</p>' } }], 409, 'stale');
+  await refused(['b-nope1', { before: prose1, fields: { html: '<p>x</p>' } }], 404, 'not_found');
+  await refused(['b-prose1', { before: prose1, fields: { sources: '[]' } }], 400, 'bad_request');
+  await refused(['b-prose1', { before: prose1, fields: {} }], 400, 'bad_request');
+  await refused(['b-plot1', { before: blocks[3], fields: { props: '{}' } }], 400, 'bad_request');
+  await refused(['b-prose1', { before: prose1, fields: { html: '<p onclick="x()">Hi</p>' } }], 422, 'invalid');
+  await refused(['b-head1', { before: blocks[0], fields: { text: 'Price $5' } }], 422, 'invalid');
+  assert.deepEqual(lessonOnDisk().blocks, blocks, 'nothing written');
+
+  const id = store.startEdit({ lessonId: LESSON, mode: 'replace', instruction: 'x', selection: sel('b-prose1', 'length') });
+  await settle(id);
+  await refused(['b-prose1', { before: prose1, fields: { html: '<p>x</p>' } }], 409, 'changeset_open');
+});

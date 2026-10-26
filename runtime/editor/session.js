@@ -1,11 +1,12 @@
 // Changeset lifecycle: submit → poll → preview (accept / cancel / refine) |
 // needs_confirmation | failed | answered (Ask note).
 
-import { h, toast, openDialog, shortHash } from './dom.js';
+import { h, ui, toast, openDialog, shortHash } from './dom.js';
 import { warningText, errorText } from './i18n.js';
 import { sectionParts } from './selection.js';
 import { runningStatus, appendParts } from './ui.js';
 import { previewEntries, summaryBar, commitBar } from './preview.js';
+import { startManualEdit } from './manual.js';
 
 const POLL_MS = 700;
 const MAX_POLL_FAILURES = 5;
@@ -22,12 +23,14 @@ export function createSession(deps) {
   //   { id, mode, instruction, focus, phase: 'running'|'ready'|'confirm'|'failed', startedAt, failures, timer, retry }
   // preview: { view, mode: 'old'|'new'|'diff', excluded: Set<group>, position } while a changeset is shown.
   // saved: { view, mode, position, onRestore } while a history commit is shown (read-only).
+  // manual: { block, editor, saving } while the user types into a block directly.
   let active = null;
   let preview = null;
   let saved = null;
+  let manual = null;
   let running = null;
 
-  // Listeners get { type: 'running'|'ready'|'confirm'|'failed'|'accepted'|'cancelled'|'history'|'idle', mode, ... }.
+  // Listeners get { type: 'running'|'ready'|'confirm'|'failed'|'accepted'|'cancelled'|'history'|'manual'|'idle', mode, ... }.
   const listeners = new Set();
   const emit = (event) => listeners.forEach((fn) => fn(event));
 
@@ -344,7 +347,7 @@ export function createSession(deps) {
 
   // Shows a saved commit's changes in the page, like a preview but read-only.
   async function showCommit(view, { onRestore }) {
-    if (active) {
+    if (active || manual) {
       toast(t('busy'), { error: true });
       return;
     }
@@ -394,7 +397,7 @@ export function createSession(deps) {
   }
 
   async function revert(commit) {
-    if (active) {
+    if (active || manual) {
       toast(t('busy'), { error: true });
       return;
     }
@@ -413,10 +416,81 @@ export function createSession(deps) {
     }
   }
 
+  // ---------- manual edit ----------
+
+  // Makes one block's text fields editable in place; saving writes and commits them directly.
+  function startManual(blockId) {
+    const block = lesson.blocks.find((b) => b.id === blockId);
+    const section = body.section(blockId);
+    if (active || saved || manual || !block || !section) {
+      toast(t('busy'), { error: true });
+      return;
+    }
+    // Keep the caret where the selection ended.
+    const sel = getSelection();
+    if (sel.rangeCount) sel.collapseToEnd();
+    selection.clear();
+    toolbar.hide();
+    prompt.close();
+    manual = { block, saving: false };
+    manual.editor = startManualEdit(section, block, { onSave: saveManual, onCancel: cancelManual });
+    bar.set(ui('div', { class: 'ld-ed-summary ld-ed-manual', role: 'region', 'aria-label': t('manual') },
+      h('div', { class: 'ld-ed-summary-text' },
+        h('strong', {}, t('manualEditing')),
+        h('span', { class: 'ld-ed-muted' }, t('manualHint'))),
+      h('div', { class: 'ld-ed-actions' },
+        h('button', { type: 'button', class: 'ld-ed-btn', onclick: cancelManual }, t('cancel')),
+        h('button', { type: 'button', class: 'ld-ed-btn is-primary', onclick: saveManual }, t('save')))));
+    manual.editor.focus();
+    emit({ type: 'manual' });
+  }
+
+  async function endManual() {
+    manual.editor.stop();
+    body.invalidate(manual.block.id);
+    manual = null;
+    bar.set(null);
+    await showLesson();
+    emit({ type: 'idle' });
+  }
+
+  async function saveManual() {
+    if (!manual || manual.saving) return;
+    const fields = manual.editor.fields();
+    if (!Object.keys(fields).length) {
+      await endManual();
+      toast(t('nothingChanged'));
+      return;
+    }
+    manual.saving = true;
+    const buttons = [...document.querySelectorAll('.ld-ed-manual button')];
+    buttons.forEach((b) => { b.disabled = true; });
+    try {
+      const res = await api.post(`${lessonPath}/blocks/${encodeURIComponent(manual.block.id)}`, { before: manual.block, fields });
+      lesson = res.lesson;
+      await endManual();
+      toast(res.commit ? t('accepted', shortHash(res.commit)) : t('nothingChanged'));
+    } catch (err) {
+      // The typed text stays on the page so it can be fixed, or dropped with Cancel.
+      manual.saving = false;
+      buttons.forEach((b) => { b.disabled = false; });
+      toast(t('error', errorText(err, t)), { error: true });
+    }
+  }
+
+  async function cancelManual() {
+    if (!manual || manual.saving) return;
+    await endManual();
+  }
+
   return {
-    // 'idle' | 'running' | 'ready' | 'confirm' | 'failed' | 'history'
+    // 'idle' | 'running' | 'ready' | 'confirm' | 'failed' | 'history' | 'manual'
     get phase() {
-      return active?.phase ?? (saved ? 'history' : 'idle');
+      return active?.phase ?? (manual ? 'manual' : saved ? 'history' : 'idle');
+    },
+    // The lesson as last saved (what the page shows outside a preview).
+    get lesson() {
+      return lesson;
     },
     get previewMode() {
       return preview?.mode ?? null;
@@ -434,6 +508,7 @@ export function createSession(deps) {
     revert,
     showCommit,
     closeCommit,
+    startManual,
     jumpTo,
   };
 }

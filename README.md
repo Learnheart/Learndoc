@@ -21,7 +21,8 @@ https://github.com/user-attachments/assets/6a6af30a-d542-4ff8-b18b-83a76d9aade7
   The change comes back as a change set you preview in place — old / new / diff — and accept,
   cancel or refine. Related edits elsewhere in the lesson (renamed notation, cross-references)
   are included with a reason for each. A change that spans the whole lesson goes through the
-  **Edit whole lesson** chat instead, without selecting anything.
+  **Edit whole lesson** chat instead, without selecting anything. For a small fix (a typo, a
+  word) choose *Edit directly* and type into the block yourself; no Claude involved.
 - **History.** Every accepted change is a git commit in your project; restore any earlier version
   from the page, or delete old entries (ticked ones, or all) to free the space they take.
 - **Local and private.** A local server on `127.0.0.1` runs `claude -p` with your existing Claude
@@ -77,6 +78,12 @@ Then, in the page:
    request, press Enter.
 3. Review the preview: jump between changes, switch old / new / diff, untick groups you don't want.
 4. **Accept** (commits the lesson), **Cancel**, or select text in the preview and **Refine**.
+
+To fix a typo or a word yourself, select text in one block (or click its handle) and pick
+**Sửa trực tiếp / Edit directly**: the block's text becomes editable in place. ⌘/Ctrl+Enter or
+**Save** writes and commits it, Esc or **Cancel** drops what you typed. Headings, paragraphs, box
+titles and bodies, quiz questions and answers, code and captions can be typed into; formulas can be
+deleted but not typed into (change one with **Edit**). Pasted text arrives as plain text.
 
 For a change across the whole lesson ("say *norm* instead of *length* everywhere"), open
 **Sửa cả bài / Edit whole lesson** in the top bar and type it there: the preview, Accept and Cancel

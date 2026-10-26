@@ -62,6 +62,11 @@ export function createBody({ main, ctx, lesson, t }) {
 
   return {
     sync,
+    // Forces the next sync to re-render the block (its DOM was changed in place, e.g. typed into).
+    invalidate: (id) => {
+      const section = findSection(main, id);
+      if (section) sigs.delete(section);
+    },
     showLesson: (next) => sync(next.blocks.map((block) => ({ block, sig: plainSig(block) }))),
     section: (id) => findSection(main, id),
   };

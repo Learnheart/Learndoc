@@ -666,6 +666,19 @@ ins.ld-ins {
   background-color: var(--tint);
   box-shadow: 0 0 0 6px var(--tint);
 }
+/* Manual edit: the block being typed into, each editable field with a light frame. */
+.ld-block.is-manual { outline: 2px solid var(--accent); outline-offset: 6px; }
+.ld-block.is-manual > .ld-handle { visibility: hidden; }
+.ld-block.is-manual [contenteditable] {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
+  cursor: text;
+  caret-color: var(--accent);
+}
+.ld-block.is-manual [contenteditable]:focus { outline-style: solid; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.ld-block.is-manual span.math[contenteditable="false"] { cursor: default; outline: none; background: none; }
+.ld-ed-summary.ld-ed-manual { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
 .ld-block.is-primary { outline: 2px solid var(--accent); }
 .ld-block.is-related { outline: 2px dashed var(--c2); }
 .ld-block.is-inserted {
