@@ -33,7 +33,7 @@ import { ChromeBrowser, findChrome } from '../../lib/chrome.mjs';
 import { makeT, warningText } from '../../runtime/editor/i18n.js';
 
 const SKILL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const CLAUDE_TIMEOUT_MS = 360000; // spawner 150 s + one automatic retry + slack
+const CLAUDE_TIMEOUT_MS = 360000; // how long the journey waits for one edit (the server's own cap is 30 min)
 const MOD = { alt: 1, ctrl: 2, meta: 4 };
 const CMD = process.platform === 'darwin' ? MOD.meta : MOD.ctrl;
 

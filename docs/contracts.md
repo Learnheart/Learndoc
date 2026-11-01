@@ -85,7 +85,10 @@ Common patterns:
   "features": { "math": true },
   "boxTypes": { "<name slug>": { "label": "string", "color": "c1..c6" } },
   "editModel": "string? (default 'sonnet')",
-  "edit": { "maxRelated": "int 1..30, default 8" } }
+  "edit": { "maxRelated": "int 1..30, default 8",
+            "timeoutSec": "int 60..14400, default 1800 (cap per claude call)",
+            "idleTimeoutSec": "int 30..3600, default 180 (stop after this long without a streamed event)",
+            "effort": "low|medium|high|xhigh|max? (passed as --effort; unset → CLI default)" } }
 ```
 Default box types (built into skill, overridable label only):
 `def` Definition, `example` Example, `formula` Formula, `intuition` Intuition, `warn` Pitfall, `note` Note.
@@ -296,8 +299,13 @@ Changeset view:
 { "id", "lessonId", "mode", "status": "running|ready|needs_confirmation|failed|accepted|cancelled|answered",
   "round": 1, "summary", "counts": {...}, "changes": [applied...], "warnings": [{ code, blockId?, message }] (exactly these fields),
   "focus": resolvedSelection, "preview": Lesson, "needsConfirmation": {...}?, "answer": {...}? (ask),
-  "error": "string?", "diagnostics": [Diagnostic]? (failed validation), "usage": { "costUsd", "durationMs" } }
+  "error": "string?", "errorCode": "stalled|timeout|api_error|…?", "diagnostics": [Diagnostic]? (failed validation),
+  "usage": { "costUsd", "durationMs" },
+  "progress": { "attempt", "attempts", "phase": "starting|thinking|writing|checking", "thinkingChars", "outputChars",
+                "outputTokens"?, "startedAt", "lastEventAt", "timeoutMs", "idleTimeoutMs", "now" }? (only while running) }
 ```
+The running bar shows the phase, elapsed time, ~tokens (`outputTokens`, else characters / 4), how long ago the last
+event came (`now - lastEventAt`, server clock) and, after 45 s without one, when the call will be stopped.
 Terminal statuses: `accepted`, `cancelled`, `answered` (Ask mode, once the note is stored). DELETE on a
 terminal changeset returns `{ ok: true }` and never deletes notes. `openChangeset` in GET `/api/lessons/:id`
 is `null` or `{ id, mode, status }`; its `config` is `{ boxTypes (raw), language, features, editModel }`.
@@ -314,11 +322,17 @@ the prompt; second failure → status `failed` with diagnostics.
 
 ## 8. Spawner (`server/spawner.mjs`)
 
-Args: `-p --model <m> --output-format json --json-schema <text> --tools "" --strict-mcp-config
---append-system-prompt-file <skill>/references/edit-contract.md --no-session-persistence`; prompt via stdin
-(`end()`); cwd = project root; timeout 150 s (SIGTERM, then SIGKILL after 3 s).
-Outcome: exit≠0 and stdout not JSON → `cli_error` (stderr); `is_error` → `api_error`; missing/non-object
-`structured_output` → `no_structured_output` (include `result` prose); else ok. Do not trust `subtype`.
+Args: `-p --model <m> [--effort <e>] --output-format stream-json --verbose --include-partial-messages
+--json-schema <text> --tools "" --strict-mcp-config --append-system-prompt-file <skill>/references/edit-contract.md
+--no-session-persistence`; prompt via stdin (`end()`); cwd = project root; env without the variables a Claude Code
+session sets for its children (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_*`, `CLAUDE_EFFORT`, …).
+Stdout is read line by line (one JSON event per line). Every line resets the idle timer: no output for
+`idleTimeoutMs` (default 180 s) → `stalled`; past `timeoutMs` (default 30 min) → `timeout` (both SIGTERM, then
+SIGKILL after 3 s). `onProgress({ phase: starting|thinking|writing, thinkingChars, outputChars, outputTokens?,
+lastEventAt })` runs on each `stream_event` (content block start/delta, message start/delta/stop).
+Outcome from the last `type: "result"` event: none → `cli_error` (stderr, else the last lines); `is_error` →
+`api_error`; missing/non-object `structured_output` → `no_structured_output` (include `result` prose); else ok.
+Do not trust `subtype`.
 Return `{ ok, value, costUsd, durationMs, error?, raw? }`. Binary overridable by env `LEARNDOC_CLAUDE_BIN`
 (tests use a fake).
 

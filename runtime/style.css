@@ -880,7 +880,10 @@ body.ld-ed-has-bar .ld-layout { padding-top: calc(32px + var(--ld-ed-bar-h, 0px)
 body.ld-ed-has-bar .ld-toc { top: calc(var(--topbar-h) + var(--ld-ed-bar-h, 0px) + 24px); }
 html:has(body.ld-ed-has-bar) { scroll-padding-top: calc(var(--topbar-h) + var(--ld-ed-bar-h, 0px) + 16px); }
 
-.ld-ed-running { display: flex; align-items: center; gap: 12px; justify-content: center; }
+.ld-ed-running { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; justify-content: center; }
+.ld-ed-progress { font-variant-numeric: tabular-nums; }
+.ld-ed-quiet { color: var(--c2); font-size: 13.5px; }
+.ld-ed-running.is-quiet .ld-ed-spinner { animation-duration: 2.4s; }
 .ld-ed-spinner {
   width: 16px;
   height: 16px;

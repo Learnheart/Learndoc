@@ -383,3 +383,37 @@ test('saveBlock refuses stale, unknown, non-editable and invalid input, and an o
   await settle(id);
   await refused(['b-prose1', { before: prose1, fields: { html: '<p>x</p>' } }], 409, 'changeset_open');
 });
+
+test('a running changeset reports progress; edit.effort and the limits come from learndoc.json', async () => {
+  const stream = [{ thinking: 'Considering the passage.' }, { pauseMs: 400 }, { json: '{"summary":"s"' }, { pauseMs: 400 }];
+  const { root, store, fake, settle } = await setup([{ structured_output: { summary: 'Say norm.', changes: [replaceProse('<p>A vector $\\mathbf{x}$ has a <strong>norm</strong> and a direction.</p>')] }, stream }]);
+  const configFile = path.join(root, 'learndoc.json');
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  fs.writeFileSync(configFile, JSON.stringify({ ...config, edit: { ...config.edit, effort: 'xhigh', timeoutSec: 600, idleTimeoutSec: 90 } }));
+  const id = store.startEdit({ lessonId: LESSON, mode: 'replace', instruction: 'say norm', selection: sel('b-prose1', 'length') });
+  const running = await waitFor(() => {
+    const v = store.view(id);
+    return v.status === 'running' && v.progress?.phase === 'thinking' && v;
+  }, { what: 'thinking progress' });
+  assert.deepEqual([running.progress.attempt, running.progress.attempts], [1, 2]);
+  assert.equal(running.progress.thinkingChars, 'Considering the passage.'.length);
+  assert.deepEqual([running.progress.timeoutMs, running.progress.idleTimeoutMs], [600_000, 90_000]);
+  assert.equal(typeof running.progress.now, 'number');
+  const view = await settle(id);
+  assert.equal(view.status, 'ready', view.error);
+  assert.equal(view.progress, undefined, 'no progress once the changeset settled');
+  const { args } = fake.calls()[0];
+  assert.equal(args[args.indexOf('--effort') + 1], 'xhigh');
+});
+
+test('a stalled claude call fails with errorCode stalled', async () => {
+  const { root, store, settle } = await setup([{ structured_output: {}, stream: [{ thinking: 'hm' }, { pauseMs: 60_000 }] }]);
+  const configFile = path.join(root, 'learndoc.json');
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  // The schema floor is 30 s; the store converts seconds, so a fractional value keeps the test fast.
+  fs.writeFileSync(configFile, JSON.stringify({ ...config, edit: { ...config.edit, idleTimeoutSec: 0.5 } }));
+  const id = store.startEdit({ lessonId: LESSON, mode: 'replace', instruction: 'x', selection: sel('b-prose1', 'length') });
+  const view = await settle(id);
+  assert.deepEqual([view.status, view.errorCode], ['failed', 'stalled']);
+  assert.match(view.error, /^stalled: claude sent nothing/);
+});

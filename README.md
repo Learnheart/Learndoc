@@ -96,6 +96,21 @@ change; restoring one also undoes the changes after it. Tick entries and **Delet
 folded into the entry before it, and git history is rewritten and pruned (this cannot be undone,
 and is refused while another branch or tag still holds those commits).
 
+### Long edits and progress
+
+While Claude works, the bar at the top shows what it is doing (starting, thinking, writing the
+change, checking the result), the elapsed time, about how many tokens it has written and how long
+ago it last sent anything. A long edit that keeps streaming is never cut off; a call that sends
+nothing for 3 minutes is treated as stuck and stopped, and any call stops after 30 minutes. You can
+**Cancel** at any time. To change the limits or ask for more reasoning, add to `learndoc.json`:
+
+```json
+"edit": { "effort": "high", "idleTimeoutSec": 300, "timeoutSec": 3600 }
+```
+
+`effort` is `low`, `medium`, `high`, `xhigh` or `max` (left out: Claude's default). The next
+request picks the change up; no restart needed.
+
 ### Open it again without Claude
 
 - **To read:** double-click `html/index.html` (or any `html/<lesson>.html`). The `html/` folder is

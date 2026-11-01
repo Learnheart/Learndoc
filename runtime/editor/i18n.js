@@ -1,5 +1,15 @@
 // UI strings for the in-page editor, keyed by config.language (fallback: en).
 
+// 75000 → "1 min 15 s", 180000 → "3 min"; under a minute only seconds.
+function fmtDuration(ms, sec, min) {
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  if (!m) return `${total} ${sec}`;
+  return total % 60 ? `${m} ${min} ${total % 60} ${sec}` : `${m} ${min}`;
+}
+
+const fmtCount = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
 const STRINGS = {
   vi: {
     replace: 'Sửa',
@@ -23,6 +33,17 @@ const STRINGS = {
     selectBlock: 'Chọn block (Shift: chọn liên tiếp)',
     running: 'Claude đang xử lý…',
     seconds: (s) => `${s} giây`,
+    duration: (ms) => fmtDuration(ms, 'giây', 'phút'),
+    phase_starting: 'Đang khởi động Claude…',
+    phase_thinking: 'Claude đang suy nghĩ…',
+    phase_writing: 'Claude đang viết thay đổi…',
+    phase_checking: 'Đang kiểm tra kết quả…',
+    attempt: (a, n) => `lần ${a}/${n} (thử lại vì kết quả trước chưa hợp lệ)`,
+    tokens: (n) => `~${fmtCount(n)} token`,
+    activeAgo: (ms) => (ms < 3000 ? 'đang hoạt động' : `hoạt động ${fmtDuration(ms, 'giây', 'phút')} trước`),
+    quiet: (ms) => `Chưa thấy hoạt động mới; nếu im lặng quá ${fmtDuration(ms, 'giây', 'phút')} sẽ tự dừng.`,
+    'err:stalled': 'Claude ngừng phản hồi quá lâu nên đã bị dừng (có thể do mạng hoặc dịch vụ quá tải). Thử lại, hoặc tăng edit.idleTimeoutSec trong learndoc.json.',
+    'err:timeout': 'Claude chạy quá thời gian tối đa nên đã bị dừng. Thử lại với yêu cầu nhỏ hơn, hoặc tăng edit.timeoutSec trong learndoc.json.',
     cancel: 'Huỷ',
     accept: 'Chấp nhận',
     close: 'Đóng',
@@ -147,6 +168,17 @@ const STRINGS = {
     selectBlock: 'Select block (Shift: select a range)',
     running: 'Claude is working…',
     seconds: (s) => `${s}s`,
+    duration: (ms) => fmtDuration(ms, 's', 'min'),
+    phase_starting: 'Starting Claude…',
+    phase_thinking: 'Claude is thinking…',
+    phase_writing: 'Claude is writing the change…',
+    phase_checking: 'Checking the result…',
+    attempt: (a, n) => `attempt ${a}/${n} (retrying: the previous result was invalid)`,
+    tokens: (n) => `~${fmtCount(n)} tokens`,
+    activeAgo: (ms) => (ms < 3000 ? 'active' : `active ${fmtDuration(ms, 's', 'min')} ago`),
+    quiet: (ms) => `No new activity yet; it stops by itself after ${fmtDuration(ms, 's', 'min')} of silence.`,
+    'err:stalled': 'Claude stopped responding for too long and was stopped (network or an overloaded service). Retry, or raise edit.idleTimeoutSec in learndoc.json.',
+    'err:timeout': 'Claude ran past the time limit and was stopped. Retry with a smaller request, or raise edit.timeoutSec in learndoc.json.',
     cancel: 'Cancel',
     accept: 'Accept',
     close: 'Close',

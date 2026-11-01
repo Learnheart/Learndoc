@@ -12,13 +12,12 @@ import * as git from '../lib/git.mjs';
 import { CONFIG_FILE, COURSE_FILE, SKILL_ROOT, STATE_DIR, formatJson, lessonFile, readJson } from '../lib/project.mjs';
 import { buildContextPack } from './context.mjs';
 import { evaluateAnswer, evaluateChangeset, focusWarnings, newDiagnostics } from './edit-validation.mjs';
-import { runClaude } from './spawner.mjs';
+import { DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, runClaude } from './spawner.mjs';
 
 // `lesson`: no selection, the instruction applies to the whole lesson (the in-page chat).
 const MODES = ['replace', 'insert', 'ask', 'lesson'];
 const NO_SELECTION = { focusBlockIds: [], ranges: [] };
-// A whole-lesson edit may rewrite many blocks, so its claude call gets longer than a focused one.
-const LESSON_TIMEOUT_MS = 300_000;
+const ATTEMPTS = 2; // one automatic retry when the output fails validation
 const TERMINAL = new Set(['accepted', 'cancelled', 'answered']);
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,63}$/;
 export const DEFAULT_MODEL = 'sonnet';
@@ -149,8 +148,10 @@ export class Store {
       ...(rec.needsConfirmation && { needsConfirmation: rec.needsConfirmation }),
       ...(rec.answer && { answer: rec.answer }),
       ...(rec.error && { error: rec.error }),
+      ...(rec.errorCode && { errorCode: rec.errorCode }),
       ...(rec.diagnostics?.length && { diagnostics: rec.diagnostics }),
       usage: rec.usage,
+      ...(rec.status === 'running' && rec.progress && { progress: { ...rec.progress, now: Date.now() } }),
     };
   }
 
@@ -399,7 +400,7 @@ export class Store {
   // ---------- running claude ----------
 
   launch(rec, request) {
-    Object.assign(rec, { status: 'running', request, focus: request.focus, error: undefined, diagnostics: undefined, needsConfirmation: undefined });
+    Object.assign(rec, { status: 'running', request, focus: request.focus, error: undefined, errorCode: undefined, diagnostics: undefined, needsConfirmation: undefined, progress: undefined });
     this.save(rec);
     this.execute(rec, request).catch((error) => this.finish(rec, { status: 'failed', error: error.message }));
   }
@@ -420,10 +421,12 @@ export class Store {
       }));
 
     let retry;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const outcome = await this.call(rec, await pack(retry), request.mode === 'ask' ? 'answer' : 'changeset', request.mode === 'lesson' ? LESSON_TIMEOUT_MS : undefined);
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      rec.progress = { attempt, attempts: ATTEMPTS, phase: 'starting', thinkingChars: 0, outputChars: 0, startedAt: Date.now(), lastEventAt: Date.now() };
+      const outcome = await this.call(rec, await pack(retry), request.mode === 'ask' ? 'answer' : 'changeset', project.config);
       if (rec.status === 'cancelled') return;
-      if (!outcome.ok) return this.finish(rec, { status: 'failed', error: `${outcome.error.code}: ${outcome.error.message}` });
+      if (!outcome.ok) return this.finish(rec, { status: 'failed', error: `${outcome.error.code}: ${outcome.error.message}`, errorCode: outcome.error.code });
+      rec.progress = { ...rec.progress, phase: 'checking', lastEventAt: Date.now() };
       const result = await evaluate(outcome.value);
       if (!result.diagnostics.length) return this.complete(rec, request, outcome.value, result);
       retry = { output: outcome.value, diagnostics: selectDiagnostics(result.diagnostics, MAX_DIAGNOSTICS).diagnostics };
@@ -431,8 +434,20 @@ export class Store {
     this.finish(rec, { status: 'failed', error: 'the edit did not pass validation', diagnostics: retry.diagnostics });
   }
 
-  async call(rec, prompt, schema, timeoutMs) {
-    const handle = runClaude({ prompt, model: rec.model, schemaText: SCHEMAS[schema], skillDir: SKILL_ROOT, cwd: this.root, timeoutMs });
+  // Limits and effort come from learndoc.json `edit` (timeoutSec, idleTimeoutSec, effort); progress
+  // events update rec.progress, which the changeset view reports while the call runs.
+  async call(rec, prompt, schema, config) {
+    const edit = config.edit ?? {};
+    const timeoutMs = edit.timeoutSec ? edit.timeoutSec * 1000 : DEFAULT_TIMEOUT_MS;
+    const idleTimeoutMs = edit.idleTimeoutSec ? edit.idleTimeoutSec * 1000 : DEFAULT_IDLE_TIMEOUT_MS;
+    rec.progress = { ...rec.progress, timeoutMs, idleTimeoutMs };
+    const handle = runClaude({
+      prompt, model: rec.model, schemaText: SCHEMAS[schema], skillDir: SKILL_ROOT, cwd: this.root, effort: edit.effort,
+      timeoutMs, idleTimeoutMs,
+      onProgress: (p) => {
+        if (rec.status === 'running') rec.progress = { ...rec.progress, ...p };
+      },
+    });
     this.running.set(rec.id, handle);
     try {
       const outcome = await handle.done;

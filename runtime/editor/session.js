@@ -100,7 +100,7 @@ export function createSession(deps) {
     job.mode = view.mode;
     switch (view.status) {
       case 'running':
-        running?.tick();
+        running?.update(view.progress);
         schedulePoll(job);
         break;
       case 'ready':
@@ -113,7 +113,7 @@ export function createSession(deps) {
         askConfirmation(job, view);
         break;
       case 'failed':
-        fail(job, view.error, view);
+        fail(job, view.errorCode && t.known(`err:${view.errorCode}`) ? t(`err:${view.errorCode}`) : view.error, view);
         break;
       default: // accepted or cancelled elsewhere
         finish();

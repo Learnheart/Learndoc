@@ -16,6 +16,9 @@ test('ok: structured_output, cost, duration; prompt via stdin; flags', async () 
   const [call] = s.calls();
   assert.equal(call.prompt, 'PROMPT TEXT');
   assert.deepEqual(call.args.slice(0, 3), ['-p', '--model', 'sonnet']);
+  assert.equal(call.args[call.args.indexOf('--output-format') + 1], 'stream-json');
+  assert.ok(call.args.includes('--verbose') && call.args.includes('--include-partial-messages'));
+  assert.ok(!call.args.includes('--effort'), 'no --effort unless configured');
   assert.equal(call.args[call.args.indexOf('--tools') + 1], '');
   assert.ok(call.args.includes('--strict-mcp-config') && call.args.includes('--no-session-persistence'));
   assert.equal(call.args[call.args.indexOf('--append-system-prompt-file') + 1], path.join(ROOT, 'references/edit-contract.md'));
@@ -52,4 +55,58 @@ test('cancel kills a running call; timeout stops it too', async () => {
   const timed = await run({ timeoutMs: 300 }).done;
   assert.equal(timed.error.code, 'timeout');
   assert.ok(Date.now() - started < 10_000);
+});
+
+test('streamed progress: phases, character and token counts; --effort passed on', async () => {
+  const s = scenario([{ structured_output: { summary: 's' }, stream: [{ thinking: 'Let me think.' }, { thinking: ' More.' }, { json: '{"summary":' }, { json: '"s"}' }] }]);
+  const seen = [];
+  const r = await run({ effort: 'high', onProgress: (p) => seen.push(p) }).done;
+  assert.equal(r.ok, true, r.error?.message);
+  assert.deepEqual(r.value, { summary: 's' });
+  const [call] = s.calls();
+  assert.equal(call.args[call.args.indexOf('--effort') + 1], 'high');
+  assert.deepEqual([...new Set(seen.map((p) => p.phase))], ['starting', 'thinking', 'writing']);
+  const last = seen.at(-1);
+  assert.equal(last.thinkingChars, 'Let me think. More.'.length);
+  assert.equal(last.outputChars, '{"summary":"s"}'.length);
+  assert.equal(last.outputTokens, 20);
+  assert.equal(typeof last.lastEventAt, 'number');
+  assert.ok(!('outputTokensBefore' in last));
+});
+
+test('a long call that keeps streaming runs past the idle limit; a silent one is stopped as stalled', async () => {
+  const steps = Array.from({ length: 8 }, () => [{ pauseMs: 150 }, { thinking: '…' }]).flat();
+  scenario([{ structured_output: { summary: 'done' }, stream: steps }]);
+  const active = await run({ idleTimeoutMs: 600 }).done;
+  assert.equal(active.ok, true, active.error?.message);
+  assert.ok(active.durationMs > 0);
+
+  scenario([{ structured_output: { summary: 'late' }, stream: [{ thinking: 'start' }, { pauseMs: 5000 }] }]);
+  const started = Date.now();
+  const stalled = await run({ idleTimeoutMs: 400 }).done;
+  assert.equal(stalled.error.code, 'stalled');
+  assert.match(stalled.error.message, /sent nothing for \d+ s/);
+  assert.ok(Date.now() - started < 4000, 'stopped well before the pause ends');
+});
+
+test('Claude Code session variables are not passed on to claude -p', async () => {
+  const s = scenario([{ structured_output: {} }]);
+  const saved = { ...process.env };
+  Object.assign(process.env, { CLAUDECODE: '1', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDE_CODE_SESSION_ID: 'x', CLAUDE_EFFORT: 'low' });
+  try {
+    assert.equal((await run().done).ok, true);
+  } finally {
+    for (const k of ['CLAUDECODE', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_EFFORT']) {
+      if (k in saved) process.env[k] = saved[k];
+      else delete process.env[k];
+    }
+  }
+  assert.deepEqual(s.calls()[0].sessionEnv, []);
+});
+
+test('output with no result event is a cli_error showing the last lines', async () => {
+  scenario([{ stdout: '{"type":"system","subtype":"init"}\nsomething went wrong\n', exitCode: 1 }]);
+  const r = await run().done;
+  assert.equal(r.error.code, 'cli_error');
+  assert.match(r.error.message, /something went wrong/);
 });

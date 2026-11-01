@@ -173,17 +173,48 @@ export function createBar() {
   };
 }
 
-// "Claude is working… 12s [Cancel]"; tick() refreshes the elapsed time.
+// "Claude is thinking… · 2 min 10 s · ~3.4k tokens · active 2 s ago [Cancel]". update(progress) takes
+// the server's progress (phase, token counts, lastEventAt, now); without one only the time moves.
+// A call that has been quiet for a while says so, with when it will be stopped.
+const QUIET_MS = 45_000;
+
 export function runningStatus({ t, startedAt, onCancel }) {
+  const label = h('span', {}, t('running'));
   const elapsed = h('span', { class: 'ld-ed-muted' });
+  const detail = h('span', { class: 'ld-ed-muted ld-ed-progress' });
+  const quiet = h('span', { class: 'ld-ed-quiet', hidden: true });
   const node = ui('div', { class: 'ld-ed-running', role: 'status' },
     h('span', { class: 'ld-ed-spinner', 'aria-hidden': 'true' }),
-    h('span', {}, t('running')),
-    elapsed,
+    label, elapsed, detail, quiet,
     h('button', { type: 'button', class: 'ld-ed-btn', onclick: onCancel }, t('cancel')));
+  let last = null; // { progress, receivedAt } of the latest server progress
   const tick = () => {
-    elapsed.textContent = t('seconds', Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+    elapsed.textContent = t('duration', Math.max(0, Date.now() - startedAt));
+    if (!last) return;
+    const p = last.progress;
+    // Server clock for the gap, so a skewed browser clock does not matter.
+    const silentMs = Math.max(0, (p.now ?? Date.now()) - p.lastEventAt + (Date.now() - last.receivedAt));
+    const tokens = p.outputTokens ?? Math.round((p.thinkingChars + p.outputChars) / 4);
+    detail.textContent = [
+      p.attempts > 1 && p.attempt > 1 && t('attempt', p.attempt, p.attempts),
+      tokens > 0 && t('tokens', tokens),
+      p.phase !== 'checking' && t('activeAgo', silentMs),
+    ].filter(Boolean).join(' · ');
+    const isQuiet = p.phase !== 'checking' && silentMs > QUIET_MS && p.idleTimeoutMs;
+    quiet.hidden = !isQuiet;
+    if (isQuiet) quiet.textContent = t('quiet', p.idleTimeoutMs);
+    node.classList.toggle('is-quiet', Boolean(isQuiet));
   };
   tick();
-  return { node, tick };
+  const timer = setInterval(() => (node.isConnected ? tick() : clearInterval(timer)), 1000);
+  return {
+    node,
+    tick,
+    update(progress) {
+      if (!progress) return tick();
+      last = { progress, receivedAt: Date.now() };
+      label.textContent = t(`phase_${progress.phase}`);
+      tick();
+    },
+  };
 }
