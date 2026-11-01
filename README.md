@@ -113,6 +113,36 @@ and is refused while another branch or tag still holds those commits).
   Export runs on the local server with Chrome or Chromium; on a standalone page without the
   server, a lesson's button opens the print dialog (*Save as PDF* gives the same pages).
 
+### Start the edit server from a terminal
+
+The launcher only runs one command, which you can also type yourself. Run it inside the course
+folder (the one with `learndoc.json`; a subfolder works too). The path is where you cloned the skill
+(`~/.claude/skills/Learndoc` with the install command above):
+
+```bash
+cd <course-folder>
+node ~/.claude/skills/Learndoc/bin/learndoc.mjs serve
+```
+
+It starts the server in the background, opens the course in the browser and prints the link
+(`"url": "http://127.0.0.1:<port>/?t=…"`). If a server for this course is already running, it is
+reused (`"reused": true`) instead of starting a second one.
+
+| To | Run (inside the course folder) |
+|---|---|
+| Start, or reopen the running one | `node ~/.claude/skills/Learndoc/bin/learndoc.mjs serve` |
+| Open a given lesson | `… serve --lesson <lesson-id>` |
+| Start without opening the browser | `… serve --no-open` |
+| Use a fixed port | `… serve --port 8765` |
+| Stop | `kill $(node -p "require('./.learndoc/server.json').pid")` |
+| Restart (e.g. after `git pull` of the skill) | the Stop command, then the Start command |
+
+On Windows (PowerShell), stop it with
+`Stop-Process -Id (Get-Content .learndoc\server.json | ConvertFrom-Json).pid`.
+If the server does not start, the printed `fix` says what to do; its log is
+`.learndoc/server.log`. The server needs Node 22+ and the `claude` CLI (see
+[Requirements](#requirements)), but nobody has to ask Claude to open it.
+
 Later, in Claude Code:
 
 | You say | Claude does |
